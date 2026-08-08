@@ -10,6 +10,7 @@ const CONFIG = {
   port: 3000,
   devToken: 'dev_token_change_me',
   maxEvents: 500,
+  discordWebhook: process.env.SENTINEL_WEBHOOK || 'https://discord.com/api/webhooks/1535503025802575964/2TA68-Gut5F5HEPF_liyd_X6glTUk1glVo0O_4E7N_P7ZKbcvhBD_AaGVZ14kWuB_63u',
 };
 
 // ---- Wire protocol v1 schemas -------------------------------------------
@@ -44,6 +45,35 @@ const store = {
   findings: [],
   findingKeys: new Set(),
 };
+
+async function notifyDiscord(f) {
+  if (!CONFIG.discordWebhook) return;
+  try {
+    const res = await fetch(CONFIG.discordWebhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'Sentinel',
+        embeds: [{
+          title: `${f.confidence} — Economy Anomaly`,
+          description: f.summary,
+          color: f.confidence === 'HIGH' ? 0xFF5C5C : 0xFFB84D,
+          fields: [
+            { name: 'Player', value: f.player, inline: true },
+            { name: 'Amount', value: `$${f.amount.toLocaleString()}`, inline: true },
+            { name: 'Transactions', value: String(f.txn_count), inline: true },
+            { name: 'Unsourced', value: `${Math.round(f.unsourced_ratio * 100)}%`, inline: true },
+          ],
+          footer: { text: 'Sentinel · BlackStone Development' },
+          timestamp: new Date(f.detected_at).toISOString(),
+        }],
+      }),
+    });
+    if (!res.ok) console.error(`[notify] Discord webhook HTTP ${res.status}`);
+  } catch (err) {
+    console.error(`[notify] Discord webhook failed: ${err.message}`);
+  }
+}
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
@@ -101,6 +131,7 @@ app.post('/v1/ingest', (req, res) => {
   const newFindings = analyze(store.events, {});
   for (const f of newFindings) {
     if (store.findingKeys.has(f.key)) continue;
+    if (f.confidence === 'HIGH') notifyDiscord(f)
     store.findingKeys.add(f.key);
     store.findings.unshift(f);
     console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
@@ -188,4 +219,5 @@ app.listen(CONFIG.port, () => {
   console.log(`  store:    in-memory (volatile, lost on restart)`);
   console.log(`  protocol: v1 · max ${CONFIG.maxEvents} events/batch · 256kb limit`);
   console.log(`  waiting on POST /v1/ingest ...`);
+  console.log(`  notify:   ${CONFIG.discordWebhook ? 'Discord webhook configured' : 'no webhook (set SENTINEL_WEBHOOK)'}`);
 });
