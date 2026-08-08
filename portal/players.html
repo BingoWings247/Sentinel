@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel — Players</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#070A14; --glass:rgba(255,255,255,.055); --edge:rgba(255,255,255,.12);
+    --edge-hi:rgba(255,255,255,.22); --txt:#EAF0FA; --txt-soft:#9AA6BC; --txt-faint:#5D6880;
+    --cyan:#3EE6FF; --violet:#8B5CF6; --magenta:#F43F8E;
+    --ok:#34E39B; --warn:#FFB84D; --crit:#FF5C5C;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--void);color:var(--txt);font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;overflow-x:hidden}
+  .disp{font-family:"Space Grotesk",sans-serif}
+  .mono{font-family:"JetBrains Mono",monospace}
+
+  .aurora{position:fixed;inset:0;z-index:0;pointer-events:none;filter:blur(90px);opacity:.55}
+  .aurora i{position:absolute;border-radius:50%}
+  .aurora .a{width:55vw;height:55vw;left:-12vw;top:-18vw;background:radial-gradient(circle,var(--violet),transparent 65%)}
+  .aurora .b{width:48vw;height:48vw;right:-10vw;top:8vh;background:radial-gradient(circle,var(--cyan),transparent 65%);opacity:.7}
+  .aurora .c{width:44vw;height:44vw;left:28vw;bottom:-22vw;background:radial-gradient(circle,var(--magenta),transparent 65%);opacity:.45}
+  @media (prefers-reduced-motion:no-preference){
+    .aurora .a{animation:drift 26s ease-in-out infinite alternate}
+    .aurora .b{animation:drift 32s ease-in-out infinite alternate-reverse}
+    .aurora .c{animation:drift 38s ease-in-out infinite alternate}
+    @keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(6vw,4vh) scale(1.15)}}
+  }
+
+  .app{position:relative;z-index:1;display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+  .nav{margin:16px 0 16px 16px;border-radius:20px;background:var(--glass);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--edge);border-top-color:var(--edge-hi);display:flex;flex-direction:column;padding:26px 0 20px;height:calc(100vh - 32px);position:sticky;top:16px}
+  .wordmark{padding:0 24px 24px}
+  .wordmark .brand{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:1.45rem;background:linear-gradient(92deg,var(--txt) 30%,var(--cyan) 75%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .wordmark .sub{font-family:"JetBrains Mono",monospace;font-size:.58rem;letter-spacing:.22em;color:var(--txt-faint);text-transform:uppercase;margin-top:4px}
+  .nav a{display:flex;align-items:center;gap:10px;margin:2px 12px;padding:9px 14px;border-radius:11px;color:var(--txt-soft);text-decoration:none;font-size:.86rem;font-weight:500}
+  .nav a:hover{color:var(--txt);background:rgba(255,255,255,.05)}
+  .nav a.active{color:#fff;background:linear-gradient(95deg,rgba(62,230,255,.16),rgba(139,92,246,.16));border:1px solid rgba(62,230,255,.25);box-shadow:0 0 22px rgba(62,230,255,.12)}
+  .nav .foot{margin-top:auto;padding:16px 24px 0;border-top:1px solid var(--edge);font-size:.72rem;color:var(--txt-faint);line-height:1.6}
+  .nav .foot .st{display:flex;align-items:center;gap:8px;color:var(--txt-soft);font-weight:500}
+  .pulse{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 12px var(--ok)}
+  .pulse.dead{background:var(--crit);box-shadow:0 0 12px var(--crit)}
+
+  .main{min-width:0;padding:16px 16px 40px 20px}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 22px;margin-bottom:22px;border-radius:16px;background:var(--glass);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--edge);border-top-color:var(--edge-hi);flex-wrap:wrap}
+  .server-select{display:flex;align-items:center;gap:9px;font-weight:600;font-size:.92rem}
+  .subtabs{display:flex;gap:4px;margin-left:6px}
+  .subtabs button{padding:7px 15px;border-radius:99px;font-size:.8rem;font-weight:500;font-family:"Inter",sans-serif;color:var(--txt-soft);background:none;border:none;cursor:pointer}
+  .subtabs button:hover{background:rgba(255,255,255,.06);color:var(--txt)}
+  .subtabs button.on{color:#fff;background:linear-gradient(95deg,var(--cyan),var(--violet));box-shadow:0 0 20px rgba(139,92,246,.45)}
+  .who{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .role{font-family:"JetBrains Mono",monospace;font-size:.58rem;letter-spacing:.16em;border:1px solid var(--edge-hi);border-radius:6px;padding:4px 9px;color:var(--txt-soft)}
+  .avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--cyan),var(--violet));display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;color:#0A0E1A}
+
+  .pagehead{padding:6px 6px 16px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+  .pagehead h1{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:1.6rem;letter-spacing:-.015em}
+  .pagehead .count{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--txt-soft)}
+  .pagehead .count b{color:var(--cyan)}
+
+  .searchrow{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+  .searchrow input{
+    background:var(--glass);border:1px solid var(--edge);border-radius:12px;
+    color:var(--txt);font-family:"Inter",sans-serif;font-size:.86rem;
+    padding:10px 16px;outline:none;min-width:220px;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  }
+  .searchrow input:focus{border-color:rgba(62,230,255,.4);box-shadow:0 0 18px rgba(62,230,255,.12)}
+  .searchrow input[type="date"]{color-scheme:dark;min-width:150px}
+  .searchrow input::placeholder{color:var(--txt-faint)}
+
+  .pane{background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--edge);border-top-color:var(--edge-hi);border-radius:18px;padding:14px 20px}
+  table{width:100%;border-collapse:collapse;font-size:.82rem}
+  th{text-align:left;font-family:"JetBrains Mono",monospace;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:var(--txt-faint);font-weight:500;padding:8px 10px 9px 0;border-bottom:1px solid var(--edge-hi)}
+  th:last-child,td:last-child{text-align:right}
+  td{padding:9px 10px 9px 0;border-bottom:1px solid rgba(255,255,255,.06);color:var(--txt-soft)}
+  tr:last-child td{border-bottom:none}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{background:rgba(255,255,255,.03)}
+  td.pname{font-family:"JetBrains Mono",monospace;font-size:.76rem;color:var(--txt);font-weight:500}
+  td.num{font-variant-numeric:tabular-nums;font-family:"JetBrains Mono",monospace;font-size:.74rem}
+  .flag{
+    display:inline-block;font-family:"JetBrains Mono",monospace;font-size:.62rem;
+    color:var(--crit);border:1px solid rgba(255,92,92,.4);border-radius:99px;padding:2px 9px;
+    text-shadow:0 0 8px rgba(255,92,92,.5);
+  }
+  .clean{color:var(--txt-faint);font-size:.72rem}
+
+  /* profile drawer */
+  .profile{margin-bottom:18px}
+  .profile .phead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  .profile h2{font-family:"Space Grotesk",sans-serif;font-size:1.2rem;font-weight:600}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{font-family:"JetBrains Mono",monospace;font-size:.64rem;color:var(--txt-soft);border:1px solid var(--edge-hi);border-radius:99px;padding:3px 10px}
+  .chip b{color:var(--txt)}
+  .back{margin-left:auto;font-size:.78rem;color:var(--cyan);cursor:pointer;background:none;border:none;font-family:"Inter",sans-serif}
+  .back:hover{text-shadow:0 0 10px rgba(62,230,255,.6)}
+  .pfinding{border-left:3px solid var(--crit);background:rgba(255,92,92,.06);border-radius:8px;padding:10px 14px;margin:8px 0;font-size:.82rem;color:var(--txt-soft)}
+  .pfinding b{color:var(--crit)}
+  .stream{list-style:none}
+  .stream li{display:flex;gap:13px;align-items:baseline;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.8rem}
+  .stream li:last-child{border-bottom:none}
+  .stream .ts{font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--txt-faint);white-space:nowrap;width:58px}
+  .stream .ev{color:var(--txt-soft);line-height:1.5}
+  .stream .ev b{color:var(--txt);font-weight:500}
+  .sev{width:7px;height:7px;border-radius:50%;flex-shrink:0;position:relative;top:-1px}
+  .sev.ok{background:var(--ok);box-shadow:0 0 9px var(--ok)}
+  .sev.warn{background:var(--warn);box-shadow:0 0 9px var(--warn)}
+  .sev.crit{background:var(--crit);box-shadow:0 0 9px var(--crit)}
+  .sev.info{background:var(--txt-faint)}
+
+  .empty{padding:30px 10px;text-align:center;color:var(--txt-faint);font-size:.85rem}
+  .hidden{display:none}
+  .lhit{background:var(--glass);border:1px solid var(--edge);border-left:3px solid var(--crit);border-radius:12px;padding:12px 16px;margin-bottom:10px;font-size:.83rem;color:var(--txt-soft)}
+  .lhit b{color:var(--txt)}
+  .lhit .lmeta{font-family:"JetBrains Mono",monospace;font-size:.64rem;color:var(--txt-faint);margin-top:6px}
+  .lhit.warnf{border-left-color:var(--warn)}
+
+  @media (max-width:1000px){
+    .app{grid-template-columns:1fr}
+    .nav{position:static;height:auto;margin:12px;flex-direction:row;align-items:center;overflow-x:auto;padding:12px;gap:2px}
+    .wordmark{padding:0 12px 0 4px}.wordmark .sub{display:none}.nav .foot{display:none}
+    .nav a{white-space:nowrap;margin:0 2px;padding:8px 12px}
+    .main{padding:0 12px 32px}.who{margin-left:0}
+    td:nth-child(3),th:nth-child(3){display:none}
+  }
+</style>
+</head>
+<body>
+<div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i></div>
+
+<div class="app">
+  <aside class="nav">
+    <div class="wordmark">
+      <div class="brand">SENTINEL</div>
+      <div class="sub">BlackStone Development</div>
+    </div>
+    <a href="/">Overview</a>
+    <a href="/timeline.html">Timeline</a>
+    <a href="/performance.html">Performance</a>
+    <a href="#">Economy</a>
+    <a class="active" href="/players.html">Players</a>
+    <a href="#">Staff Log</a>
+    <a href="#">Alerts</a>
+    <a href="#">Settings</a>
+    <div class="foot">
+      <div class="st"><span class="pulse" id="agent-pulse"></span> <span id="agent-state">Connecting…</span></div>
+      <div id="agent-note">—</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="server-select">srv_FAKE_LEGACY_RP</div>
+      <nav class="subtabs" id="views">
+        <button class="on" data-view="roster">Roster</button>
+        <button data-view="ledger">Findings Ledger</button>
+      </nav>
+      <div class="who">
+        <span class="role">OWNER</span>
+        <div class="avatar">BW</div>
+      </div>
+    </header>
+
+    <div class="pagehead">
+      <h1 class="disp">Players</h1>
+      <span class="count"><b id="player-count">0</b> seen · <b id="flagged-count">0</b> flagged</span>
+    </div>
+
+    <!-- ROSTER VIEW -->
+    <section id="view-roster">
+      <div class="searchrow">
+        <input type="search" id="search" placeholder="Search player name…">
+      </div>
+
+      <!-- profile drawer (hidden until a row is clicked) -->
+      <section class="pane profile hidden" id="profile">
+        <div class="phead">
+          <h2 class="disp" id="p-name">—</h2>
+          <div class="chips" id="p-chips"></div>
+          <button class="back" id="p-back">← back to roster</button>
+        </div>
+        <div id="p-findings"></div>
+        <ul class="stream" id="p-events"></ul>
+      </section>
+
+      <section class="pane" id="roster-pane">
+        <table>
+          <thead><tr><th>Player</th><th>Status</th><th>Sessions</th><th>Econ In</th><th>Econ Out</th><th>Events</th></tr></thead>
+          <tbody id="roster"><tr><td colspan="6"><div class="empty">Waiting for players…</div></td></tr></tbody>
+        </table>
+      </section>
+    </section>
+
+    <!-- LEDGER VIEW -->
+    <section id="view-ledger" class="hidden">
+      <div class="searchrow">
+        <input type="search" id="l-search" placeholder="Search findings by player name…">
+        <input type="date" id="l-date" title="Filter by date">
+      </div>
+      <div id="ledger">
+        <div class="pane"><div class="empty">No findings recorded.</div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const SEV = { 'server.hitch':'warn', 'player.drop':'crit', 'player.join':'ok', 'econ.txn':'info', 'perf.resmon':'info' };
+
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function ts(ms){ return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function dts(ms){ return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+
+let allPlayers = [];
+let allFindings = [];
+
+function describe(ev) {
+  const d = ev.data || {};
+  switch (ev.type) {
+    case 'player.join':  return `connected`;
+    case 'player.drop':  return `dropped — ${esc(d.reason || 'unknown')}${d.session_s ? ` · session ${Math.round(d.session_s/60)}m` : ''}`;
+    case 'econ.txn':     return `${d.direction === 'in' ? 'deposited' : 'withdrew'} $${(d.amount || 0).toLocaleString()} <span style="color:var(--txt-faint)">(src: ${esc(d.source || '—')})</span>`;
+    default:             return `<b>${esc(ev.type)}</b>`;
+  }
+}
+
+// ---- roster ----
+function renderRoster() {
+  const q = $('search').value.trim().toLowerCase();
+  const rows = allPlayers.filter(p => !q || p.name.toLowerCase().includes(q));
+  if (!rows.length) {
+    $('roster').innerHTML = '<tr><td colspan="6"><div class="empty">No players match.</div></td></tr>';
+    return;
+  }
+  $('roster').innerHTML = rows.map(p => `
+    <tr data-name="${esc(p.name)}">
+      <td class="pname">${esc(p.name)}</td>
+      <td>${p.findings ? `<span class="flag">${p.findings} FINDING${p.findings > 1 ? 'S' : ''}</span>` : '<span class="clean">clean</span>'}</td>
+      <td class="num">${p.joins}</td>
+      <td class="num">$${p.econ_in.toLocaleString()}</td>
+      <td class="num">$${p.econ_out.toLocaleString()}</td>
+      <td class="num">${p.events}</td>
+    </tr>`).join('');
+}
+
+// ---- profile ----
+async function openProfile(name) {
+  const res = await fetch(`/v1/player?name=${encodeURIComponent(name)}`);
+  const o = await res.json();
+  if (!o.ok) return;
+  $('p-name').textContent = o.name;
+  const p = allPlayers.find(x => x.name === name) || {};
+  $('p-chips').innerHTML = [
+    `<span class="chip">sessions <b>${p.joins ?? 0}</b></span>`,
+    `<span class="chip">in <b>$${(p.econ_in ?? 0).toLocaleString()}</b></span>`,
+    `<span class="chip">out <b>$${(p.econ_out ?? 0).toLocaleString()}</b></span>`,
+    `<span class="chip">last seen <b>${p.last_seen ? dts(p.last_seen) : '—'}</b></span>`,
+  ].join('');
+  $('p-findings').innerHTML = (o.findings || []).map(f =>
+    `<div class="pfinding"><b>${f.confidence}</b> — ${esc(f.summary)}</div>`
+  ).join('');
+  $('p-events').innerHTML = (o.events || []).map(ev =>
+    `<li><span class="ts">${ts(ev.t)}</span><span class="sev ${SEV[ev.type] || 'info'}"></span><span class="ev"><b>${esc(name)}</b> ${describe(ev)}</span></li>`
+  ).join('') || '<li><span class="ev">No events recorded.</span></li>';
+  $('profile').classList.remove('hidden');
+  $('roster-pane').classList.add('hidden');
+}
+
+$('p-back').addEventListener('click', () => {
+  $('profile').classList.add('hidden');
+  $('roster-pane').classList.remove('hidden');
+});
+
+$('roster').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-name]');
+  if (tr) openProfile(tr.dataset.name);
+});
+
+$('search').addEventListener('input', renderRoster);
+
+// ---- findings ledger (name + date search) ----
+function renderLedger() {
+  const q = $('l-search').value.trim().toLowerCase();
+  const day = $('l-date').value; // YYYY-MM-DD or ''
+  let rows = allFindings.filter(f => f.player); // player-attributed findings
+  if (q) rows = rows.filter(f => f.player.toLowerCase().includes(q));
+  if (day) {
+    rows = rows.filter(f => {
+      const d = new Date(f.detected_at);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return iso === day;
+    });
+  }
+  if (!rows.length) {
+    $('ledger').innerHTML = '<div class="pane"><div class="empty">No findings match that search.</div></div>';
+    return;
+  }
+  $('ledger').innerHTML = rows.map(f => `
+    <div class="lhit ${f.confidence === 'HIGH' ? '' : 'warnf'}">
+      <b>${f.confidence}</b> · <b>${esc(f.player)}</b> — ${esc(f.summary)}
+      <div class="lmeta">${dts(f.detected_at)} · ${f.txn_count ?? '—'} txns · $${(f.amount ?? 0).toLocaleString()} · key ${esc(f.key)}</div>
+    </div>`).join('');
+}
+
+$('l-search').addEventListener('input', renderLedger);
+$('l-date').addEventListener('change', renderLedger);
+
+// ---- view toggle ----
+$('views').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  $('view-roster').classList.toggle('hidden', btn.dataset.view !== 'roster');
+  $('view-ledger').classList.toggle('hidden', btn.dataset.view !== 'ledger');
+});
+
+// ---- refresh loop ----
+async function refresh() {
+  try {
+    const [pr, fr] = await Promise.all([fetch('/v1/players'), fetch('/v1/findings')]);
+    const po = await pr.json();
+    const fo = await fr.json();
+
+    $('agent-pulse').classList.remove('dead');
+    $('agent-state').textContent = 'Backend linked';
+    $('agent-note').textContent = 'refreshing every 5 s';
+
+    allPlayers = po.players || [];
+    allFindings = fo.findings || [];
+    $('player-count').textContent = allPlayers.length;
+    $('flagged-count').textContent = allPlayers.filter(p => p.findings > 0).length;
+
+    if ($('profile').classList.contains('hidden')) renderRoster();
+    if (!$('view-ledger').classList.contains('hidden')) renderLedger();
+  } catch (err) {
+    $('agent-pulse').classList.add('dead');
+    $('agent-state').textContent = 'Backend unreachable';
+    $('agent-note').textContent = 'is server.js running?';
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

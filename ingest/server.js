@@ -237,6 +237,43 @@ app.use((err, req, res, next) => {
   res.status(500).json({ ok: false, error: { code: 'internal', detail: err.message } });
 });
 
+// ---- GET /v1/players — roster aggregation --------------------------------
+app.get('/v1/players', (req, res) => {
+  const players = new Map();
+  for (const e of store.events) {
+    const p = e.data?.player;
+    if (!p) continue;
+    if (!players.has(p)) players.set(p, { name: p, events: 0, joins: 0, drops: 0, econ_in: 0, econ_out: 0, last_seen: 0 });
+    const rec = players.get(p);
+    rec.events++;
+    rec.last_seen = Math.max(rec.last_seen, e.t);
+    if (e.type === 'player.join') rec.joins++;
+    if (e.type === 'player.drop') rec.drops++;
+    if (e.type === 'econ.txn') {
+      if (e.data.direction === 'in') rec.econ_in += e.data.amount || 0;
+      else rec.econ_out += e.data.amount || 0;
+    }
+  }
+  const findingsByPlayer = new Map();
+  for (const f of store.findings) {
+    if (!f.player) continue;
+    findingsByPlayer.set(f.player, (findingsByPlayer.get(f.player) || 0) + 1);
+  }
+  const out = [...players.values()]
+    .map(p => ({ ...p, findings: findingsByPlayer.get(p.name) || 0 }))
+    .sort((a, b) => b.last_seen - a.last_seen);
+  res.json({ ok: true, total: out.length, players: out });
+});
+
+// ---- GET /v1/player?name= — one player's full picture ---------------------
+app.get('/v1/player', (req, res) => {
+  const name = req.query.name;
+  if (!name) return res.status(400).json({ ok: false, error: { code: 'missing_name' } });
+  const events = store.events.filter(e => e.data?.player === name).slice(-100).reverse();
+  const findings = store.findings.filter(f => f.player === name);
+  res.json({ ok: true, name, events, findings });
+});
+
 // ---- Boot self-report (Rule 1) -------------------------------------------
 app.listen(CONFIG.port, () => {
   console.log('[sentinel-ingest] BOOT OK');
