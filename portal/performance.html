@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sentinel — Timeline</title>
+<title>Sentinel — Performance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -16,6 +16,7 @@
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:var(--void);color:var(--txt);font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;overflow-x:hidden}
   .disp{font-family:"Space Grotesk",sans-serif}
+  .mono{font-family:"JetBrains Mono",monospace}
 
   .aurora{position:fixed;inset:0;z-index:0;pointer-events:none;filter:blur(90px);opacity:.55}
   .aurora i{position:absolute;border-radius:50%}
@@ -46,10 +47,7 @@
   .topbar{display:flex;align-items:center;gap:14px;padding:14px 22px;margin-bottom:22px;border-radius:16px;background:var(--glass);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--edge);border-top-color:var(--edge-hi);flex-wrap:wrap}
   .server-select{display:flex;align-items:center;gap:9px;font-weight:600;font-size:.92rem}
   .subtabs{display:flex;gap:4px;margin-left:6px}
-  .subtabs button{
-    padding:7px 15px;border-radius:99px;font-size:.8rem;font-weight:500;font-family:"Inter",sans-serif;
-    color:var(--txt-soft);background:none;border:none;cursor:pointer;
-  }
+  .subtabs button{padding:7px 15px;border-radius:99px;font-size:.8rem;font-weight:500;font-family:"Inter",sans-serif;color:var(--txt-soft);background:none;border:none;cursor:pointer}
   .subtabs button:hover{background:rgba(255,255,255,.06);color:var(--txt)}
   .subtabs button.on{color:#fff;background:linear-gradient(95deg,var(--cyan),var(--violet));box-shadow:0 0 20px rgba(139,92,246,.45)}
   .who{margin-left:auto;display:flex;align-items:center;gap:12px}
@@ -61,35 +59,59 @@
   .pagehead .count{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--txt-soft)}
   .pagehead .count b{color:var(--cyan)}
 
-  .pane{background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--edge);border-top-color:var(--edge-hi);border-radius:18px;padding:6px 20px 12px}
+  /* ---- Issue cards (Sentry-style) ---- */
+  .issues{display:flex;flex-direction:column;gap:14px;margin-bottom:26px}
+  .issue{
+    background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--edge);border-top-color:var(--edge-hi);border-radius:18px;padding:18px 20px 14px;
+  }
+  .issue.crit{box-shadow:0 0 44px rgba(255,92,92,.14);border-color:rgba(255,92,92,.3)}
+  .issue.warn{box-shadow:0 0 44px rgba(255,184,77,.11);border-color:rgba(255,184,77,.26)}
+  .issue .head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .issue .conf{font-family:"JetBrains Mono",monospace;font-size:.58rem;letter-spacing:.16em}
+  .issue.crit .conf{color:var(--crit);text-shadow:0 0 10px rgba(255,92,92,.5)}
+  .issue.warn .conf{color:var(--warn);text-shadow:0 0 10px rgba(255,184,77,.5)}
+  .issue.low .conf{color:var(--txt-faint)}
+  .issue h3{font-family:"Space Grotesk",sans-serif;font-size:.98rem;font-weight:600;line-height:1.35;flex:1;min-width:200px}
+  .badges{display:flex;gap:8px;margin-left:auto}
+  .badge{
+    font-family:"JetBrains Mono",monospace;font-size:.64rem;color:var(--txt-soft);
+    border:1px solid var(--edge-hi);border-radius:99px;padding:3px 10px;white-space:nowrap;
+  }
+  .badge b{color:var(--txt)}
+  .causes{list-style:none;counter-reset:c}
+  .causes li{
+    counter-increment:c;display:flex;gap:11px;align-items:baseline;
+    padding:6px 0;font-size:.8rem;color:var(--txt-soft);border-top:1px solid rgba(255,255,255,.06);
+  }
+  .causes li::before{content:counter(c,decimal-leading-zero);font-family:"JetBrains Mono",monospace;font-size:.64rem;color:var(--txt-faint)}
+  .cconf{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:.6rem;white-space:nowrap}
+  .cconf.HIGH{color:var(--crit)}
+  .cconf.MED{color:var(--warn)}
+  .cconf.LOW{color:var(--txt-faint)}
+  .issue .meta{font-family:"JetBrains Mono",monospace;font-size:.64rem;color:var(--txt-faint);margin-top:10px}
+
+  .pane{background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--edge);border-top-color:var(--edge-hi);border-radius:18px;padding:18px 20px}
   table{width:100%;border-collapse:collapse;font-size:.82rem}
-  th{text-align:left;font-family:"JetBrains Mono",monospace;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:var(--txt-faint);font-weight:500;padding:14px 10px 9px;border-bottom:1px solid var(--edge-hi)}
-  td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--txt-soft);vertical-align:top}
+  th{text-align:left;font-family:"JetBrains Mono",monospace;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:var(--txt-faint);font-weight:500;padding:0 10px 9px 0;border-bottom:1px solid var(--edge-hi)}
+  th:last-child,td:last-child{text-align:right}
+  td{padding:9px 10px 9px 0;border-bottom:1px solid rgba(255,255,255,.06);color:var(--txt-soft)}
   tr:last-child td{border-bottom:none}
-  tr:hover td{background:rgba(255,255,255,.025)}
-  td.ts{font-family:"JetBrains Mono",monospace;font-size:.7rem;color:var(--txt-faint);white-space:nowrap}
-  td.sevcell{width:22px;padding-top:13px}
-  .sev{display:block;width:7px;height:7px;border-radius:50%}
-  .sev.ok{background:var(--ok);box-shadow:0 0 9px var(--ok)}
-  .sev.warn{background:var(--warn);box-shadow:0 0 9px var(--warn)}
-  .sev.crit{background:var(--crit);box-shadow:0 0 9px var(--crit)}
-  .sev.info{background:var(--txt-faint)}
-  td.type{font-family:"JetBrains Mono",monospace;font-size:.7rem;white-space:nowrap}
-  .chip{background:rgba(255,255,255,.07);border:1px solid var(--edge);padding:1px 7px;border-radius:5px}
-  td.desc{color:var(--txt-soft);line-height:1.5}
-  td.desc b{color:var(--txt);font-weight:500}
-  td.src{font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--txt-faint);white-space:nowrap}
+  td.rname{font-family:"JetBrains Mono",monospace;font-size:.74rem;color:var(--txt)}
+  td .bar{display:inline-block;height:4px;border-radius:2px;margin-right:9px;vertical-align:middle;background:linear-gradient(90deg,var(--cyan),var(--violet));box-shadow:0 0 8px rgba(62,230,255,.4)}
+  td.num{font-variant-numeric:tabular-nums;font-family:"JetBrains Mono",monospace;font-size:.74rem}
+  td.num.warn{color:var(--warn);font-weight:600}
 
   .empty{padding:34px 10px;text-align:center;color:var(--txt-faint);font-size:.85rem}
+  .hidden{display:none}
 
   @media (max-width:1000px){
     .app{grid-template-columns:1fr}
     .nav{position:static;height:auto;margin:12px;flex-direction:row;align-items:center;overflow-x:auto;padding:12px;gap:2px}
     .wordmark{padding:0 12px 0 4px}.wordmark .sub{display:none}.nav .foot{display:none}
     .nav a{white-space:nowrap;margin:0 2px;padding:8px 12px}
-    .main{padding:0 12px 32px}
-    .who{margin-left:0}
-    td.src{display:none}th:last-child{display:none}
+    .main{padding:0 12px 32px}.who{margin-left:0}
+    .badges{margin-left:0;width:100%}
   }
 </style>
 </head>
@@ -103,8 +125,8 @@
       <div class="sub">BlackStone Development</div>
     </div>
     <a href="/">Overview</a>
-    <a class="active" href="/timeline.html">Timeline</a>
-    <a href="/performance.html">Performance</a>
+    <a href="/timeline.html">Timeline</a>
+    <a class="active" href="/performance.html">Performance</a>
     <a href="#">Economy</a>
     <a href="#">Players</a>
     <a href="#">Staff Log</a>
@@ -119,12 +141,9 @@
   <div class="main">
     <header class="topbar">
       <div class="server-select">srv_FAKE_LEGACY_RP</div>
-      <nav class="subtabs" id="filters">
-        <button class="on" data-type="">All</button>
-        <button data-type="player">Players</button>
-        <button data-type="econ">Economy</button>
-        <button data-type="server">Server</button>
-        <button data-type="perf">Perf</button>
+      <nav class="subtabs" id="views">
+        <button class="on" data-view="issues">Issues</button>
+        <button data-view="resources">Resources</button>
       </nav>
       <div class="who">
         <span class="role">OWNER</span>
@@ -133,70 +152,83 @@
     </header>
 
     <div class="pagehead">
-      <h1 class="disp">Timeline</h1>
-      <span class="count"><b id="shown">0</b> shown · <b id="total">0</b> matching in store · live tail, newest first</span>
+      <h1 class="disp">Performance</h1>
+      <span class="count"><b id="issue-count">0</b> open issues · <b id="hitch-count">0</b> hitches observed</span>
     </div>
 
-    <section class="pane">
-      <table>
-        <thead>
-          <tr><th></th><th>Time</th><th>Type</th><th>Event</th><th>Source</th></tr>
-        </thead>
-        <tbody id="rows">
-          <tr><td colspan="5"><div class="empty">Waiting for events…</div></td></tr>
-        </tbody>
-      </table>
+    <!-- Issues view -->
+    <section id="view-issues">
+      <div class="issues" id="issues">
+        <div class="pane"><div class="empty">No hitch issues — the server is running clean.</div></div>
+      </div>
+    </section>
+
+    <!-- Resources view -->
+    <section id="view-resources" class="hidden">
+      <section class="pane">
+        <table>
+          <thead><tr><th>Resource</th><th>Avg</th><th>Peak</th></tr></thead>
+          <tbody id="resmon"><tr><td class="rname">—</td><td class="num">—</td><td class="num">—</td></tr></tbody>
+        </table>
+      </section>
     </section>
   </div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const SEV = { 'server.hitch':'warn', 'player.drop':'crit', 'player.join':'ok', 'econ.txn':'info', 'perf.resmon':'info', 'agent.error':'crit', 'staff.action':'warn' };
-let currentType = '';
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function ts(ms){ return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
 
-function describe(ev) {
-  const d = ev.data || {};
-  switch (ev.type) {
-    case 'player.join':  return `<b>${esc(d.player || '?')}</b> connected`;
-    case 'player.drop':  return `<b>${esc(d.player || '?')}</b> dropped — ${esc(d.reason || 'unknown')}${d.session_s ? ` · session ${Math.round(d.session_s/60)}m` : ''}`;
-    case 'econ.txn':     return `<b>${esc(d.player || '?')}</b> ${d.direction === 'in' ? 'deposited' : 'withdrew'} $${(d.amount || 0).toLocaleString()} · balance $${(d.balance_after || 0).toLocaleString()}`;
-    case 'server.hitch': return `<b>Hitch warning</b> — ${d.ms} ms frame, ${d.players} players, ${d.active_resources} resources`;
-    case 'perf.resmon':  return `resmon window — <b>${esc(d.resource || '?')}</b> avg ${d.avg_ms} ms, peak ${d.peak_ms} ms`;
-    default:             return `<b>${esc(ev.type)}</b> ${esc(JSON.stringify(d))}`;
-  }
-}
-
-function ts(ms) {
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function issueCard(f) {
+  const sev = f.confidence === 'HIGH' ? 'crit' : f.confidence === 'MED' ? 'warn' : 'low';
+  const causes = (f.causes || []).map(c =>
+    `<li><span>${esc(c.detail)}</span><span class="cconf ${c.confidence}">${c.confidence}</span></li>`
+  ).join('');
+  return `
+  <article class="issue ${sev}">
+    <div class="head">
+      <span class="conf">${f.confidence} · HITCH ISSUE</span>
+      <h3>${esc(f.causes?.[0]?.detail || 'Unattributed hitches — likely external (host, OS, disk)')}</h3>
+      <div class="badges">
+        <span class="badge"><b>${f.count}</b>×</span>
+        <span class="badge">worst <b>${f.worst_ms} ms</b></span>
+      </div>
+    </div>
+    <ol class="causes">${causes}</ol>
+    <div class="meta">first seen ${ts(f.first_seen)} · last seen ${ts(f.last_seen)} · key ${esc(f.top_cause)}</div>
+  </article>`;
 }
 
 async function refresh() {
   try {
-    const q = currentType ? `?type=${currentType}&limit=100` : '?limit=100';
-    const res = await fetch('/v1/events' + q);
-    const o = await res.json();
+    const [fr, or_] = await Promise.all([fetch('/v1/findings'), fetch('/v1/overview')]);
+    const fo = await fr.json();
+    const o = await or_.json();
 
     $('agent-pulse').classList.remove('dead');
     $('agent-state').textContent = 'Backend linked';
     $('agent-note').textContent = 'refreshing every 3 s';
-    $('shown').textContent = o.events.length;
-    $('total').textContent = o.total.toLocaleString();
 
-    if (!o.events.length) {
-      $('rows').innerHTML = '<tr><td colspan="5"><div class="empty">No events match this filter yet.</div></td></tr>';
-      return;
+    const issues = (fo.findings || []).filter(f => f.type === 'perf.hitch_issue');
+    $('issue-count').textContent = issues.length;
+    $('hitch-count').textContent = o.hitches_today ?? 0;
+
+    if (issues.length) {
+      $('issues').innerHTML = issues.map(issueCard).join('');
+    } else {
+      $('issues').innerHTML = '<div class="pane"><div class="empty">No hitch issues — the server is running clean.</div></div>';
     }
-    $('rows').innerHTML = o.events.map(ev => `
-      <tr>
-        <td class="sevcell"><span class="sev ${SEV[ev.type] || 'info'}"></span></td>
-        <td class="ts">${ts(ev.t)}</td>
-        <td class="type"><span class="chip">${esc(ev.type)}</span></td>
-        <td class="desc">${describe(ev)}</td>
-        <td class="src">${esc(ev.src || 'server')}</td>
-      </tr>`).join('');
+
+    if (o.resources?.length) {
+      const maxAvg = Math.max(...o.resources.map(r => r.avg_ms), 0.01);
+      $('resmon').innerHTML = o.resources.map(r =>
+        `<tr><td class="rname"><span class="bar" style="width:${Math.max(8, Math.round((r.avg_ms / maxAvg) * 60))}px"></span>${esc(r.name)}</td>` +
+        `<td class="num${r.avg_ms > 1.5 ? ' warn' : ''}">${r.avg_ms} ms</td>` +
+        `<td class="num${r.peak_ms > 20 ? ' warn' : ''}">${r.peak_ms} ms</td></tr>`
+      ).join('');
+    }
   } catch (err) {
     $('agent-pulse').classList.add('dead');
     $('agent-state').textContent = 'Backend unreachable';
@@ -204,13 +236,13 @@ async function refresh() {
   }
 }
 
-$('filters').addEventListener('click', (e) => {
+$('views').addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
-  document.querySelectorAll('#filters button').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
-  currentType = btn.dataset.type;
-  refresh();
+  $('view-issues').classList.toggle('hidden', btn.dataset.view !== 'issues');
+  $('view-resources').classList.toggle('hidden', btn.dataset.view !== 'resources');
 });
 
 refresh();
