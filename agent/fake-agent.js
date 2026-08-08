@@ -71,7 +71,7 @@ function makeEvent() {
   console.log(`[fake-agent] >>> DUPE BURST: ${player}, ${count} txns of ~$${base}`);
   return Array.from({ length: count }, (_, i) => ({
     id: `evt_${ulid()}`,
-    t: Date.now() - rand(0, 4 * 60000),
+        t: Date.now() - rand(0, 50_000),
     type: 'econ.txn',
     src: 'bsd_banking',
     data: { player, direction: 'in', amount: base + (i % 7), source: 'unknown', balance_after: 0 },

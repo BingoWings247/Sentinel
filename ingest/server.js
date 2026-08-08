@@ -1,16 +1,17 @@
 // Sentinel ingest — wire protocol v1 (vertical slice)
-// Save as: C:\dev\sentinel\ingest\server.js
-// Run:     node ingest/server.js
+// Run: $env:SENTINEL_WEBHOOK="<webhook url>"  then  node ingest/server.js
 
 const express = require('express');
+const path = require('path');
 const { z } = require('zod');
 const { analyze } = require('../core/econ-anomaly');
+const { diagnose } = require('../core/hitch-diagnosis');
 
 const CONFIG = {
   port: 3000,
   devToken: 'dev_token_change_me',
   maxEvents: 500,
-  discordWebhook: process.env.SENTINEL_WEBHOOK || 'https://discord.com/api/webhooks/1535503025802575964/2TA68-Gut5F5HEPF_liyd_X6glTUk1glVo0O_4E7N_P7ZKbcvhBD_AaGVZ14kWuB_63u',
+  discordWebhook: process.env.SENTINEL_WEBHOOK || '', // env only — NEVER paste the URL here
 };
 
 // ---- Wire protocol v1 schemas -------------------------------------------
@@ -46,6 +47,7 @@ const store = {
   findingKeys: new Set(),
 };
 
+// ---- Discord notifier (generic: works for any finding type) --------------
 async function notifyDiscord(f) {
   if (!CONFIG.discordWebhook) return;
   try {
@@ -55,15 +57,17 @@ async function notifyDiscord(f) {
       body: JSON.stringify({
         username: 'Sentinel',
         embeds: [{
-          title: `${f.confidence} — Economy Anomaly`,
+          title: `${f.confidence} — ${f.type === 'econ.anomaly' ? 'Economy Anomaly' : 'Hitch Issue'}`,
           description: f.summary,
           color: f.confidence === 'HIGH' ? 0xFF5C5C : 0xFFB84D,
           fields: [
-            { name: 'Player', value: f.player, inline: true },
-            { name: 'Amount', value: `$${f.amount.toLocaleString()}`, inline: true },
-            { name: 'Transactions', value: String(f.txn_count), inline: true },
-            { name: 'Unsourced', value: `${Math.round(f.unsourced_ratio * 100)}%`, inline: true },
-          ],
+            f.player && { name: 'Player', value: f.player, inline: true },
+            f.amount != null && { name: 'Amount', value: `$${f.amount.toLocaleString()}`, inline: true },
+            f.txn_count != null && { name: 'Transactions', value: String(f.txn_count), inline: true },
+            f.unsourced_ratio != null && { name: 'Unsourced', value: `${Math.round(f.unsourced_ratio * 100)}%`, inline: true },
+            f.count != null && { name: 'Hitches', value: String(f.count), inline: true },
+            f.worst_ms != null && { name: 'Worst', value: `${f.worst_ms} ms`, inline: true },
+          ].filter(Boolean),
           footer: { text: 'Sentinel · BlackStone Development' },
           timestamp: new Date(f.detected_at).toISOString(),
         }],
@@ -127,21 +131,34 @@ app.post('/v1/ingest', (req, res) => {
     `[ingest] seq=${batch.seq} ${batch.server_id}: ` +
     `received=${received} deduped=${deduped} stored_total=${store.events.length}`
   );
- // Run detection over the recent window — findings, not noise
+
+  // ---- Detection pass 1: economy anomalies -------------------------------
   const newFindings = analyze(store.events, {});
   for (const f of newFindings) {
     if (store.findingKeys.has(f.key)) continue;
-    if (f.confidence === 'HIGH') notifyDiscord(f)
     store.findingKeys.add(f.key);
     store.findings.unshift(f);
     console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
+    if (f.confidence === 'HIGH') notifyDiscord(f);
+  }
+
+  // ---- Detection pass 2: hitch diagnosis (grouped issues update in place) -
+  const hitchIssues = diagnose(store.events, {});
+  for (const f of hitchIssues) {
+    const idx = store.findings.findIndex((x) => x.key === f.key);
+    if (idx >= 0) {
+      store.findings[idx] = f; // refresh count / last_seen / worst
+    } else {
+      store.findings.unshift(f);
+      console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
+      if (f.confidence === 'HIGH') notifyDiscord(f);
+    }
   }
 
   res.json({ ok: true, received, deduped, commands: [] });
 });
 
 // ---- Portal static hosting ----------------------------------------------
-const path = require('path');
 app.use(express.static(path.join(__dirname, '..', 'portal')));
 
 // ---- GET /v1/overview — what the glass reads -----------------------------
@@ -162,15 +179,6 @@ app.get('/v1/overview', (req, res) => {
     resmon[r].peak = Math.max(resmon[r].peak, e.data.peak_ms || 0);
   }
 
-// ---- GET /v1/events — the flight recorder feed ---------------------------
-app.get('/v1/events', (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
-  const type = req.query.type;
-  let out = store.events;
-  if (type) out = out.filter(e => e.type === type || e.type.startsWith(type + '.'));
-  res.json({ ok: true, total: out.length, events: out.slice(-limit).reverse() });
-});
-
   res.json({
     ok: true,
     generated_at: now,
@@ -189,7 +197,22 @@ app.get('/v1/events', (req, res) => {
   });
 });
 
+// ---- GET /v1/events — the flight recorder feed ---------------------------
+app.get('/v1/events', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+  const type = req.query.type;
+  let out = store.events;
+  if (type) out = out.filter(e => e.type === type || e.type.startsWith(type + '.'));
+  res.json({ ok: true, total: out.length, events: out.slice(-limit).reverse() });
+});
+
+// ---- GET /v1/findings ----------------------------------------------------
+app.get('/v1/findings', (req, res) => {
+  res.json({ ok: true, total: store.findings.length, findings: store.findings.slice(0, 50) });
+});
+
 // ---- Malformed JSON bodies get a real answer, not an HTML stack trace ----
+// (error middleware stays LAST — Express convention)
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({
@@ -207,10 +230,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ ok: false, error: { code: 'internal', detail: err.message } });
 });
 
-app.get('/v1/findings', (req, res) => {
-  res.json({ ok: true, total: store.findings.length, findings: store.findings.slice(0, 50) });
-});
-
 // ---- Boot self-report (Rule 1) -------------------------------------------
 app.listen(CONFIG.port, () => {
   console.log('[sentinel-ingest] BOOT OK');
@@ -218,6 +237,6 @@ app.listen(CONFIG.port, () => {
   console.log(`  auth:     static dev token — replace before anything public`);
   console.log(`  store:    in-memory (volatile, lost on restart)`);
   console.log(`  protocol: v1 · max ${CONFIG.maxEvents} events/batch · 256kb limit`);
-  console.log(`  waiting on POST /v1/ingest ...`);
   console.log(`  notify:   ${CONFIG.discordWebhook ? 'Discord webhook configured' : 'no webhook (set SENTINEL_WEBHOOK)'}`);
+  console.log(`  waiting on POST /v1/ingest ...`);
 });
