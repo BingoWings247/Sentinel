@@ -64,9 +64,24 @@ function makeEvent() {
   }};
 }
 
+ function dupeBurstEvents() {
+  const player = 'Player_4471';
+  const base = 2300 + rand(0, 300);
+  const count = rand(150, 250);
+  console.log(`[fake-agent] >>> DUPE BURST: ${player}, ${count} txns of ~$${base}`);
+  return Array.from({ length: count }, (_, i) => ({
+    id: `evt_${ulid()}`,
+    t: Date.now() - rand(0, 4 * 60000),
+    type: 'econ.txn',
+    src: 'bsd_banking',
+    data: { player, direction: 'in', amount: base + (i % 7), source: 'unknown', balance_after: 0 },
+  }));
+}
+
 // ---- Flush loop ----------------------------------------------------------
 async function flush() {
   const events = Array.from({ length: rand(3, 12) }, makeEvent);
+   if (Math.random() < 0.06) events.push(...dupeBurstEvents());
   const batch = {
     v: 1,
     server_id: CONFIG.serverId,

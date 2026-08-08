@@ -162,6 +162,12 @@
       <div class="vital"><div class="k">Last Batch</div><div class="v" id="v-batch">—</div><div class="t">seconds ago</div></div>
     </section>
 
+    <div class="sec"><h2 class="disp">Findings</h2><div class="rule"></div></div>
+    <section class="pane" style="margin-bottom:26px">
+      <div id="findings-empty" style="padding:14px 4px;color:var(--txt-faint);font-size:.85rem">No findings — Sentinel is watching.</div>
+      <ul class="stream" id="findings"></ul>
+    </section>
+
     <div class="cols">
       <section class="pane">
         <div class="sec" style="margin-top:0"><h2 class="disp">Recent activity</h2><div class="rule"></div></div>
@@ -243,6 +249,15 @@ async function refresh() {
       lastTotal = o.total_events;
       $('stream').innerHTML = o.recent.map(ev =>
         `<li><span class="ts">${ts(ev.t)}</span><span class="sev ${SEV[ev.type] || 'info'}"></span><span class="ev">${describe(ev)}</span></li>`
+      ).join('');
+    }
+    
+    const fr = await fetch('/v1/findings');
+    const fo = await fr.json();
+    if (fo.findings.length) {
+      document.getElementById('findings-empty').style.display = 'none';
+      document.getElementById('findings').innerHTML = fo.findings.slice(0, 5).map(f =>
+        `<li><span class="ts">${ts(f.detected_at)}</span><span class="sev ${f.confidence === 'HIGH' ? 'crit' : 'warn'}"></span><span class="ev"><b>${f.confidence}</b> — ${f.summary}</span></li>`
       ).join('');
     }
 

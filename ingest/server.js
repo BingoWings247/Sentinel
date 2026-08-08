@@ -4,6 +4,7 @@
 
 const express = require('express');
 const { z } = require('zod');
+const { analyze } = require('../core/econ-anomaly');
 
 const CONFIG = {
   port: 3000,
@@ -40,6 +41,8 @@ const store = {
   seenIds: new Set(),
   lastSeq: new Map(),
   lastBatchAt: null,
+  findings: [],
+  findingKeys: new Set(),
 };
 
 const app = express();
@@ -94,6 +97,14 @@ app.post('/v1/ingest', (req, res) => {
     `[ingest] seq=${batch.seq} ${batch.server_id}: ` +
     `received=${received} deduped=${deduped} stored_total=${store.events.length}`
   );
+ // Run detection over the recent window — findings, not noise
+  const newFindings = analyze(store.events, {});
+  for (const f of newFindings) {
+    if (store.findingKeys.has(f.key)) continue;
+    store.findingKeys.add(f.key);
+    store.findings.unshift(f);
+    console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
+  }
 
   res.json({ ok: true, received, deduped, commands: [] });
 });
@@ -163,6 +174,10 @@ app.use((err, req, res, next) => {
   }
   console.error('[ingest] UNHANDLED:', err);
   res.status(500).json({ ok: false, error: { code: 'internal', detail: err.message } });
+});
+
+app.get('/v1/findings', (req, res) => {
+  res.json({ ok: true, total: store.findings.length, findings: store.findings.slice(0, 50) });
 });
 
 // ---- Boot self-report (Rule 1) -------------------------------------------
