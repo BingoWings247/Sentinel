@@ -127,13 +127,20 @@ app.post('/v1/ingest', (req, res) => {
   }
   store.lastBatchAt = Date.now();
 
+  // Ring-buffer the slice store: cap memory, keep dedupe honest
+  if (store.events.length > 20000) {
+    const removed = store.events.splice(0, store.events.length - 20000);
+    for (const ev of removed) store.seenIds.delete(ev.id);
+  }
+
   console.log(
     `[ingest] seq=${batch.seq} ${batch.server_id}: ` +
     `received=${received} deduped=${deduped} stored_total=${store.events.length}`
   );
 
   // ---- Detection pass 1: economy anomalies -------------------------------
-  const newFindings = analyze(store.events, {});
+   const recentEvents = store.events.slice(-4000);
+   const newFindings = analyze(recentEvents, {});
   for (const f of newFindings) {
     if (store.findingKeys.has(f.key)) continue;
     store.findingKeys.add(f.key);
@@ -143,7 +150,7 @@ app.post('/v1/ingest', (req, res) => {
   }
 
   // ---- Detection pass 2: hitch diagnosis (grouped issues update in place) -
-  const hitchIssues = diagnose(store.events, {});
+   const hitchIssues = diagnose(recentEvents, {});
   for (const f of hitchIssues) {
     const idx = store.findings.findIndex((x) => x.key === f.key);
     if (idx >= 0) {
