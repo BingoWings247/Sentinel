@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel — Alerts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/sentinel.css">
+<style>
+  .status{font-family:"JetBrains Mono",monospace;font-size:.62rem;letter-spacing:.1em;padding:2px 9px;border-radius:99px;border:1px solid var(--edge-hi);white-space:nowrap}
+  .status.delivered{color:var(--ok);border-color:rgba(52,227,155,.4);text-shadow:0 0 8px rgba(52,227,155,.4)}
+  .status.failed{color:var(--crit);border-color:rgba(255,92,92,.4);text-shadow:0 0 8px rgba(255,92,92,.4)}
+  .status.muted,.status.below_threshold{color:var(--txt-faint)}
+  .status.no_webhook{color:var(--warn);border-color:rgba(255,184,77,.4)}
+
+  .rule{
+    background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--edge);border-top-color:var(--edge-hi);border-radius:18px;
+    padding:18px 20px;margin-bottom:14px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  }
+  .rule .rinfo{flex:1;min-width:220px}
+  .rule h3{font-family:"Space Grotesk",sans-serif;font-size:.98rem;font-weight:600;margin-bottom:4px}
+  .rule p{font-size:.8rem;color:var(--txt-soft);line-height:1.5}
+  .ctl{display:flex;align-items:center;gap:10px}
+  .ctl label{font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.14em;color:var(--txt-faint);text-transform:uppercase}
+  select{
+    background:rgba(10,14,26,.9);border:1px solid var(--edge);border-radius:10px;color:var(--txt);
+    font-family:"Inter",sans-serif;font-size:.82rem;padding:8px 12px;outline:none;cursor:pointer;
+  }
+  select:focus{border-color:rgba(62,230,255,.4)}
+  .toggle{
+    width:46px;height:26px;border-radius:99px;border:1px solid var(--edge-hi);
+    background:rgba(255,255,255,.06);position:relative;cursor:pointer;transition:background .2s;
+  }
+  .toggle.on{background:linear-gradient(95deg,rgba(62,230,255,.5),rgba(139,92,246,.5));border-color:rgba(62,230,255,.5)}
+  .toggle::after{
+    content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+    background:var(--txt);transition:transform .2s;
+  }
+  .toggle.on::after{transform:translateX(20px)}
+  .savebar{display:flex;align-items:center;gap:14px;margin-top:6px}
+  .btn{
+    background:linear-gradient(95deg,var(--cyan),var(--violet));color:#0A0E1A;border:none;
+    border-radius:11px;padding:10px 20px;font-family:"Inter",sans-serif;font-size:.84rem;
+    font-weight:600;cursor:pointer;box-shadow:0 0 22px rgba(139,92,246,.35);
+  }
+  .btn:hover{box-shadow:0 0 30px rgba(139,92,246,.55)}
+  .saved{font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--ok);opacity:0;transition:opacity .2s}
+  .saved.show{opacity:1}
+  .hookbar{display:flex;align-items:center;gap:10px;font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--txt-soft);margin-bottom:18px}
+</style>
+</head>
+<body>
+<div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i></div>
+
+<div class="app">
+    <aside class="nav" id="nav"></aside>
+  <script src="/shell.js"></script>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="server-select">srv_FAKE_LEGACY_RP</div>
+      <nav class="subtabs" id="views">
+        <button class="on" data-view="feed">Feed</button>
+        <button data-view="rules">Rules</button>
+      </nav>
+      <div class="who">
+        <span class="role">OWNER</span>
+        <div class="avatar">BW</div>
+      </div>
+    </header>
+
+    <div class="pagehead">
+      <h1 class="disp">Alerts</h1>
+      <span class="count"><b id="sent-count">0</b> delivered · <b id="total-count">0</b> evaluated</span>
+    </div>
+
+    <div class="hookbar">
+      <span class="pulse" id="hook-dot"></span>
+      <span id="hook-state">checking webhook…</span>
+    </div>
+
+    <!-- FEED -->
+    <section id="view-feed">
+      <section class="pane">
+        <table>
+          <thead><tr><th>Time</th><th>Type</th><th>Confidence</th><th>Summary</th><th>Delivery</th></tr></thead>
+          <tbody id="feed"><tr><td colspan="5"><div class="empty">No alerts evaluated yet.</div></td></tr></tbody>
+        </table>
+      </section>
+    </section>
+
+    <!-- RULES -->
+    <section id="view-rules" class="hidden">
+      <div id="rules"></div>
+      <div class="savebar">
+        <button class="btn" id="save">Save rules</button>
+        <span class="saved" id="saved">saved ✓</span>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function ts(ms){ return new Date(ms).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+
+const RULE_META = {
+  econ_anomaly:     { title: 'Economy anomalies', desc: 'Repetitive gains that lack a matching income source — the provenance scalpel.' },
+  perf_hitch_issue: { title: 'Hitch issues',      desc: 'Grouped server stalls with ranked probable causes. Alerts once per issue, not per hitch.' },
+};
+let localRules = null;
+let rulesDirty = false;
+
+function renderRules() {
+  if (!localRules) return;
+  $('rules').innerHTML = Object.entries(localRules).map(([key, r]) => {
+    const m = RULE_META[key] || { title: key, desc: '' };
+    return `<div class="rule">
+      <div class="rinfo"><h3>${esc(m.title)}</h3><p>${esc(m.desc)}</p></div>
+      <div class="ctl">
+        <label>min level</label>
+        <select data-key="${key}">
+          ${['LOW','MED','HIGH'].map(c => `<option value="${c}" ${r.min_confidence === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ctl">
+        <label>alerting</label>
+        <div class="toggle ${r.enabled ? 'on' : ''}" data-toggle="${key}"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+$('rules').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-toggle]');
+  if (!t) return;
+  const key = t.dataset.toggle;
+  localRules[key].enabled = !localRules[key].enabled;
+  rulesDirty = true;
+  renderRules();
+});
+$('rules').addEventListener('change', (e) => {
+  const s = e.target.closest('select[data-key]');
+  if (!s) return;
+  localRules[s.dataset.key].min_confidence = s.value;
+  rulesDirty = true;
+});
+
+$('save').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/v1/alerts/rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(localRules),
+    });
+    const o = await res.json();
+    if (o.ok) {
+      localRules = o.rules;
+      rulesDirty = false;
+      $('saved').classList.add('show');
+      setTimeout(() => $('saved').classList.remove('show'), 1600);
+    }
+  } catch (err) { console.error(err); }
+});
+
+async function refresh() {
+  try {
+    const o = await (await fetch('/v1/alerts')).json();
+
+    $('agent-pulse').classList.remove('dead');
+    $('agent-state').textContent = 'Backend linked';
+    $('agent-note').textContent = 'refreshing every 5 s';
+
+    $('hook-dot').classList.toggle('dead', !o.webhook_configured);
+    $('hook-state').textContent = o.webhook_configured
+      ? 'Discord webhook configured — alerts will deliver'
+      : 'No webhook configured — alerts will be recorded but not sent';
+
+    const alerts = o.alerts || [];
+    $('total-count').textContent = alerts.length;
+    $('sent-count').textContent = alerts.filter(a => a.status === 'delivered').length;
+
+    $('feed').innerHTML = alerts.length ? alerts.map(a => `
+      <tr>
+        <td class="ts">${ts(a.at)}</td>
+        <td class="type"><span class="chip">${esc(a.type)}</span></td>
+        <td><span class="cconf ${esc(a.confidence)}" style="margin:0">${esc(a.confidence)}</span></td>
+        <td class="desc">${esc(a.summary)}</td>
+        <td><span class="status ${esc(a.status)}">${esc(a.status.replace('_',' '))}</span></td>
+      </tr>`).join('') : '<tr><td colspan="5"><div class="empty">No alerts evaluated yet.</div></td></tr>';
+
+    if (!rulesDirty) { localRules = o.rules; renderRules(); }
+  } catch (err) {
+    $('agent-pulse').classList.add('dead');
+    $('agent-state').textContent = 'Backend unreachable';
+    $('agent-note').textContent = 'is server.js running?';
+  }
+}
+
+$('views').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  $('view-feed').classList.toggle('hidden', btn.dataset.view !== 'feed');
+  $('view-rules').classList.toggle('hidden', btn.dataset.view !== 'rules');
+});
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

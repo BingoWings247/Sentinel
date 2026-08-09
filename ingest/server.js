@@ -45,6 +45,7 @@ const store = {
   lastBatchAt: null,
   findings: [],
   findingKeys: new Set(),
+  alerts: [],
 };
 
 // ---- Discord notifier (generic: works for any finding type) --------------
@@ -74,9 +75,33 @@ async function notifyDiscord(f) {
       }),
     });
     if (!res.ok) console.error(`[notify] Discord webhook HTTP ${res.status}`);
+    return res.ok;
   } catch (err) {
     console.error(`[notify] Discord webhook failed: ${err.message}`);
+    return false;
   }
+}
+
+// ---- Alert rules (runtime-editable; moves to DB with the rest) -----------
+const RULES = {
+  econ_anomaly:     { enabled: true, min_confidence: 'HIGH' },
+  perf_hitch_issue: { enabled: true, min_confidence: 'HIGH' },
+};
+const RANK = { LOW: 1, MED: 2, HIGH: 3 };
+
+async function fireAlert(f) {
+  const key = f.type === 'econ.anomaly' ? 'econ_anomaly' : 'perf_hitch_issue';
+  const rule = RULES[key] || { enabled: false, min_confidence: 'HIGH' };
+  const record = { at: Date.now(), type: f.type, confidence: f.confidence, summary: f.summary, key: f.key, status: 'muted' };
+
+  if (!rule.enabled) record.status = 'muted';
+  else if (RANK[f.confidence] < RANK[rule.min_confidence]) record.status = 'below_threshold';
+  else if (!CONFIG.discordWebhook) record.status = 'no_webhook';
+  else record.status = (await notifyDiscord(f)) ? 'delivered' : 'failed';
+
+  store.alerts.unshift(record);
+  if (store.alerts.length > 200) store.alerts.length = 200;
+  console.log(`[alert] ${record.status.toUpperCase()} — ${f.confidence} ${f.type}`);
 }
 
 const app = express();
@@ -146,7 +171,7 @@ app.post('/v1/ingest', (req, res) => {
     store.findingKeys.add(f.key);
     store.findings.unshift(f);
     console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
-    if (f.confidence === 'HIGH') notifyDiscord(f);
+    fireAlert(f);
   }
 
   // ---- Detection pass 2: hitch diagnosis (grouped issues update in place) -
@@ -158,7 +183,7 @@ app.post('/v1/ingest', (req, res) => {
     } else {
       store.findings.unshift(f);
       console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
-      if (f.confidence === 'HIGH') notifyDiscord(f);
+      fireAlert(f);
     }
   }
 
@@ -302,6 +327,26 @@ app.get('/v1/staff', (req, res) => {
     drops: drops.slice(-50).reverse(),
     staffers: [...byStaffer.values()].sort((a, b) => b.total - a.total),
   });
+});
+
+app.get('/v1/alerts', (req, res) => {
+  res.json({
+    ok: true,
+    webhook_configured: !!CONFIG.discordWebhook,
+    rules: RULES,
+    alerts: store.alerts.slice(0, 100),
+  });
+});
+
+app.post('/v1/alerts/rules', (req, res) => {
+  const body = req.body || {};
+  for (const key of Object.keys(RULES)) {
+    if (!body[key]) continue;
+    if (typeof body[key].enabled === 'boolean') RULES[key].enabled = body[key].enabled;
+    if (['LOW','MED','HIGH'].includes(body[key].min_confidence)) RULES[key].min_confidence = body[key].min_confidence;
+  }
+  console.log('[alert] rules updated:', JSON.stringify(RULES));
+  res.json({ ok: true, rules: RULES });
 });
 
 // ---- GET /v1/economy — supply, flows, anomalies ---------------------------

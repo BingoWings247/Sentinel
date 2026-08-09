@@ -192,6 +192,13 @@ td.src{font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--txt-f
 tbody tr[data-name]{cursor:pointer}
 tbody tr[data-name]:hover td{background:rgba(255,255,255,.03)}
 
+/* nav items whose page doesn't exist yet */
+.nav .soon{
+  display:flex;align-items:center;gap:10px;margin:2px 12px;padding:9px 14px;
+  border-radius:11px;color:var(--txt-faint);font-size:.86rem;font-weight:500;
+  opacity:.5;cursor:not-allowed;
+}
+
 /* ---------- Search inputs ---------- */
 .searchrow{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
 .searchrow input{
