@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel — Economy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/sentinel.css">
+<style>
+  /* page-scoped only — everything else comes from the shared shell */
+  .flowchart{display:flex;gap:4px;align-items:flex-end;height:120px;margin:6px 0 4px}
+  .flowcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%}
+  .flowcol .fin{background:linear-gradient(180deg,var(--cyan),rgba(62,230,255,.35));border-radius:3px 3px 0 0;box-shadow:0 0 12px rgba(62,230,255,.25)}
+  .flowcol .fout{background:rgba(255,255,255,.16);border-radius:0 0 3px 3px}
+  .legend{display:flex;gap:16px;font-family:"JetBrains Mono",monospace;font-size:.64rem;color:var(--txt-faint);margin-top:8px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  .cols2{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}
+  .srcname{font-family:"JetBrains Mono",monospace;font-size:.74rem;color:var(--txt)}
+  .srcname.unk{color:var(--crit);text-shadow:0 0 8px rgba(255,92,92,.4)}
+  @media (max-width:1000px){ .cols2{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i></div>
+
+<div class="app">
+  <aside class="nav">
+    <div class="wordmark">
+      <div class="brand">SENTINEL</div>
+      <div class="sub">BlackStone Development</div>
+    </div>
+    <a href="/">Overview</a>
+    <a href="/timeline.html">Timeline</a>
+    <a href="/performance.html">Performance</a>
+    <a class="active" href="/economy.html">Economy</a>
+    <a href="/players.html">Players</a>
+    <a href="#">Staff Log</a>
+    <a href="#">Alerts</a>
+    <a href="#">Settings</a>
+    <div class="foot">
+      <div class="st"><span class="pulse" id="agent-pulse"></span> <span id="agent-state">Connecting…</span></div>
+      <div id="agent-note">—</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="server-select">srv_FAKE_LEGACY_RP</div>
+      <nav class="subtabs" id="views">
+        <button class="on" data-view="supply">Supply</button>
+        <button data-view="flows">Flows</button>
+        <button data-view="anomalies">Anomalies</button>
+      </nav>
+      <div class="who">
+        <span class="role">OWNER</span>
+        <div class="avatar">BW</div>
+      </div>
+    </header>
+
+    <div class="pagehead">
+      <h1 class="disp">Economy</h1>
+      <span class="count"><b id="txn-count">0</b> transactions observed · <b id="anom-count">0</b> anomalies</span>
+    </div>
+
+    <!-- SUPPLY -->
+    <section id="view-supply">
+      <section class="vitals" style="grid-template-columns:repeat(4,1fr)">
+        <div class="vital"><div class="k">Money In</div><div class="v" id="v-in">—</div><div class="t up">faucets</div></div>
+        <div class="vital"><div class="k">Money Out</div><div class="v" id="v-out">—</div><div class="t">sinks</div></div>
+        <div class="vital"><div class="k">Net Change</div><div class="v" id="v-net">—</div><div class="t" id="v-net-t">supply delta</div></div>
+        <div class="vital"><div class="k">Unsourced In</div><div class="v" id="v-unsourced">—</div><div class="t crit" id="v-unsourced-t">of all income</div></div>
+      </section>
+
+      <div class="sec"><h2 class="disp">Flow over time</h2><div class="rule"></div></div>
+      <section class="pane">
+        <div class="flowchart" id="flowchart"></div>
+        <div class="legend">
+          <span><i style="background:var(--cyan)"></i>income</span>
+          <span><i style="background:rgba(255,255,255,.16)"></i>spending</span>
+          <span id="span-label"></span>
+        </div>
+      </section>
+    </section>
+
+    <!-- FLOWS -->
+    <section id="view-flows" class="hidden">
+      <div class="cols2">
+        <section class="pane">
+          <div class="sec" style="margin-top:0"><h2 class="disp">Sources</h2><div class="rule"></div></div>
+          <table>
+            <thead><tr><th>Source</th><th>In</th><th>Out</th><th>Txns</th></tr></thead>
+            <tbody id="sources"><tr><td colspan="4"><div class="empty">Waiting for transactions…</div></td></tr></tbody>
+          </table>
+        </section>
+        <section class="pane">
+          <div class="sec" style="margin-top:0"><h2 class="disp">Top net earners</h2><div class="rule"></div></div>
+          <table>
+            <thead><tr><th>Player</th><th>Net</th></tr></thead>
+            <tbody id="earners"><tr><td colspan="2"><div class="empty">—</div></td></tr></tbody>
+          </table>
+        </section>
+      </div>
+    </section>
+
+    <!-- ANOMALIES -->
+    <section id="view-anomalies" class="hidden">
+      <div id="anomalies">
+        <div class="pane"><div class="empty">No economy anomalies — money is behaving.</div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const money = (n) => '$' + Math.round(n).toLocaleString();
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function dts(ms){ return new Date(ms).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); }
+
+async function refresh() {
+  try {
+    const o = await (await fetch('/v1/economy')).json();
+
+    $('agent-pulse').classList.remove('dead');
+    $('agent-state').textContent = 'Backend linked';
+    $('agent-note').textContent = 'refreshing every 4 s';
+
+    $('txn-count').textContent = o.txn_count.toLocaleString();
+    $('anom-count').textContent = o.anomalies.length;
+
+    // vitals
+    $('v-in').textContent = money(o.total_in);
+    $('v-out').textContent = money(o.total_out);
+    $('v-net').textContent = (o.net >= 0 ? '+' : '−') + money(Math.abs(o.net));
+    $('v-net-t').textContent = o.net >= 0 ? 'supply growing' : 'supply shrinking';
+    $('v-unsourced').textContent = Math.round(o.unsourced_ratio * 100) + '%';
+    $('v-unsourced-t').textContent = money(o.unsourced_in) + ' with no source';
+    $('v-unsourced-t').className = o.unsourced_ratio > 0.15 ? 't crit' : 't';
+
+    // flow chart
+    const max = Math.max(1, ...o.buckets.map(b => Math.max(b.in, b.out)));
+    $('flowchart').innerHTML = o.buckets.map(b => `
+      <div class="flowcol" title="${dts(b.from)} — in ${money(b.in)} / out ${money(b.out)}">
+        <div class="fin" style="height:${(b.in / max) * 55}%"></div>
+        <div class="fout" style="height:${(b.out / max) * 40}%"></div>
+      </div>`).join('');
+    if (o.buckets.length) {
+      $('span-label').textContent = `${dts(o.buckets[0].from)} → now`;
+    }
+
+    // sources
+    $('sources').innerHTML = o.sources.length ? o.sources.map(s => `
+      <tr>
+        <td class="srcname ${s.source === 'unknown' ? 'unk' : ''}">${esc(s.source)}</td>
+        <td class="num">${money(s.in)}</td>
+        <td class="num">${money(s.out)}</td>
+        <td class="num">${s.count}</td>
+      </tr>`).join('') : '<tr><td colspan="4"><div class="empty">No sources yet.</div></td></tr>';
+
+    // earners
+    $('earners').innerHTML = o.top_players.length ? o.top_players.map(p => `
+      <tr><td class="pname">${esc(p.player)}</td><td class="num${p.net > 200000 ? ' warn' : ''}">${(p.net >= 0 ? '+' : '−') + money(Math.abs(p.net))}</td></tr>
+    `).join('') : '<tr><td colspan="2"><div class="empty">—</div></td></tr>';
+
+    // anomalies
+    $('anomalies').innerHTML = o.anomalies.length ? o.anomalies.map(f => `
+      <div class="lhit ${f.confidence === 'HIGH' ? '' : 'warnf'}">
+        <b>${f.confidence}</b> · <b>${esc(f.player)}</b> — ${esc(f.summary)}
+        <div class="lmeta">${dts(f.detected_at)} · ${f.txn_count} txns · median ${money(f.median_amount)} · ${Math.round(f.unsourced_ratio * 100)}% unsourced</div>
+      </div>`).join('')
+      : '<div class="pane"><div class="empty">No economy anomalies — money is behaving.</div></div>';
+  } catch (err) {
+    $('agent-pulse').classList.add('dead');
+    $('agent-state').textContent = 'Backend unreachable';
+    $('agent-note').textContent = 'is server.js running?';
+  }
+}
+
+$('views').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  for (const v of ['supply','flows','anomalies']) {
+    $('view-' + v).classList.toggle('hidden', btn.dataset.view !== v);
+  }
+});
+
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>

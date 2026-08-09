@@ -274,6 +274,62 @@ app.get('/v1/player', (req, res) => {
   res.json({ ok: true, name, events, findings });
 });
 
+// ---- GET /v1/economy — supply, flows, anomalies ---------------------------
+app.get('/v1/economy', (req, res) => {
+  const txns = store.events.filter(e => e.type === 'econ.txn');
+  let totalIn = 0, totalOut = 0, unsourcedIn = 0;
+  const sources = new Map();
+  const players = new Map();
+
+  for (const e of txns) {
+    const d = e.data || {};
+    const amt = d.amount || 0;
+    const src = d.source || 'unknown';
+    if (!sources.has(src)) sources.set(src, { source: src, in: 0, out: 0, count: 0 });
+    const s = sources.get(src);
+    s.count++;
+    if (d.direction === 'in') { totalIn += amt; s.in += amt; if (src === 'unknown') unsourcedIn += amt; }
+    else { totalOut += amt; s.out += amt; }
+
+    const p = d.player;
+    if (p) {
+      if (!players.has(p)) players.set(p, { player: p, in: 0, out: 0 });
+      players.get(p)[d.direction === 'in' ? 'in' : 'out'] += amt;
+    }
+  }
+
+  // time buckets (12 slices across the observed span)
+  const buckets = [];
+  if (txns.length) {
+    const t0 = txns[0].t, t1 = txns[txns.length - 1].t;
+    const span = Math.max(1, t1 - t0), width = span / 12;
+    for (let i = 0; i < 12; i++) {
+      const from = t0 + i * width;
+      const slice = txns.filter(e => e.t >= from && e.t < from + width);
+      buckets.push({
+        from,
+        in: slice.filter(e => e.data.direction === 'in').reduce((s, e) => s + (e.data.amount || 0), 0),
+        out: slice.filter(e => e.data.direction !== 'in').reduce((s, e) => s + (e.data.amount || 0), 0),
+      });
+    }
+  }
+
+  res.json({
+    ok: true,
+    txn_count: txns.length,
+    total_in: totalIn,
+    total_out: totalOut,
+    net: totalIn - totalOut,
+    unsourced_in: unsourcedIn,
+    unsourced_ratio: totalIn > 0 ? unsourcedIn / totalIn : 0,
+    sources: [...sources.values()].sort((a, b) => (b.in + b.out) - (a.in + a.out)).slice(0, 12),
+    top_players: [...players.values()].map(p => ({ ...p, net: p.in - p.out }))
+      .sort((a, b) => b.net - a.net).slice(0, 10),
+    buckets,
+    anomalies: store.findings.filter(f => f.type === 'econ.anomaly'),
+  });
+});
+
 // ---- Boot self-report (Rule 1) -------------------------------------------
 app.listen(CONFIG.port, () => {
   console.log('[sentinel-ingest] BOOT OK');
