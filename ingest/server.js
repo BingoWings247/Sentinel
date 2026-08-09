@@ -274,6 +274,36 @@ app.get('/v1/player', (req, res) => {
   res.json({ ok: true, name, events, findings });
 });
 
+// ---- GET /v1/staff — accountability trail --------------------------------
+app.get('/v1/staff', (req, res) => {
+  const actions = store.events.filter(e => e.type === 'staff.action');
+  const drops = store.events.filter(e =>
+    e.type === 'player.drop' && /ban|kick/i.test(e.data?.reason || ''));
+
+  const byStaffer = new Map();
+  for (const e of actions) {
+    const s = e.data?.staffer || 'unknown';
+    if (!byStaffer.has(s)) byStaffer.set(s, { staffer: s, total: 0, actions: {}, money_given: 0, last_seen: 0 });
+    const rec = byStaffer.get(s);
+    rec.total++;
+    rec.last_seen = Math.max(rec.last_seen, e.t);
+    const a = e.data?.action || 'unknown';
+    rec.actions[a] = (rec.actions[a] || 0) + 1;
+    if (a === 'give_money') {
+      const amt = parseInt(String(e.data?.detail || '').replace(/[^0-9]/g, ''), 10) || 0;
+      rec.money_given += amt;
+    }
+  }
+
+  res.json({
+    ok: true,
+    total: actions.length,
+    actions: actions.slice(-150).reverse(),
+    drops: drops.slice(-50).reverse(),
+    staffers: [...byStaffer.values()].sort((a, b) => b.total - a.total),
+  });
+});
+
 // ---- GET /v1/economy — supply, flows, anomalies ---------------------------
 app.get('/v1/economy', (req, res) => {
   const txns = store.events.filter(e => e.type === 'econ.txn');

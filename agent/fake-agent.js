@@ -23,6 +23,17 @@ const RESOURCES = ['esx_inventory', 'es_extended', 'oxmysql', 'bsd_banking', 'bs
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
+const STAFF = ['Mod_Sarah', 'Admin_Dave', 'Dev_Marcus', 'Mod_Kyle'];
+const STAFF_ACTIONS = [
+  { action: 'spawn_item',   detail: () => `${pick(['bandage','water','lockpick','repairkit'])} x${rand(1,10)}` },
+  { action: 'teleport',     detail: () => `to ${pick(['hospital','pd','impound','airport'])}` },
+  { action: 'revive',       detail: () => 'player revived' },
+  { action: 'give_money',   detail: () => `$${rand(500, 250000).toLocaleString()}` },
+  { action: 'ban',          detail: () => pick(['mod menu', 'RDM', 'exploiting', 'toxicity']) },
+  { action: 'kick',         detail: () => pick(['AFK', 'mic spam', 'rule break']) },
+  { action: 'set_job',      detail: () => pick(['police','ems','mechanic','unemployed']) },
+];
+
 function makeEvent() {
   const roll = Math.random();
   const base = { id: `evt_${ulid()}`, t: Date.now(), src: 'server' };
@@ -55,6 +66,14 @@ function makeEvent() {
       avg_ms: +(Math.random() * 2).toFixed(2),
       peak_ms: +(Math.random() * 40).toFixed(1),
       samples: 30,
+    }};
+  }
+  if (roll < 0.93) {
+    const a = pick(STAFF_ACTIONS);
+    // Admin_Dave is our problem child — he hands out money more than anyone
+    const staffer = a.action === 'give_money' && Math.random() < 0.6 ? 'Admin_Dave' : pick(STAFF);
+    return { ...base, type: 'staff.action', data: {
+      staffer, action: a.action, target: pick(PLAYERS), detail: a.detail(),
     }};
   }
   return { ...base, type: 'server.hitch', data: {

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel — Staff Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/sentinel.css">
+<style>
+  .staffgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .staffcard{
+    background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid var(--edge);border-top-color:var(--edge-hi);border-radius:18px;padding:16px 18px 14px;
+  }
+  .staffcard.hot{border-color:rgba(255,184,77,.3);box-shadow:0 0 36px rgba(255,184,77,.1)}
+  .staffcard h3{font-family:"Space Grotesk",sans-serif;font-size:1rem;font-weight:600;margin-bottom:4px}
+  .staffcard .tot{font-family:"JetBrains Mono",monospace;font-size:.64rem;color:var(--txt-faint);margin-bottom:12px}
+  .abar{display:flex;justify-content:space-between;padding:5px 0;font-size:.78rem;color:var(--txt-soft);border-top:1px solid rgba(255,255,255,.06)}
+  .abar b{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--txt)}
+  .money{margin-top:10px;font-family:"JetBrains Mono",monospace;font-size:.7rem;color:var(--warn)}
+  .money.big{color:var(--crit);text-shadow:0 0 10px rgba(255,92,92,.4)}
+  .act{font-family:"JetBrains Mono",monospace;font-size:.7rem;padding:2px 8px;border-radius:5px;border:1px solid var(--edge);background:rgba(255,255,255,.05);white-space:nowrap}
+  .act.ban,.act.kick{color:var(--crit);border-color:rgba(255,92,92,.32)}
+  .act.give_money{color:var(--warn);border-color:rgba(255,184,77,.32)}
+</style>
+</head>
+<body>
+<div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i></div>
+
+<div class="app">
+  <aside class="nav">
+    <div class="wordmark">
+      <div class="brand">SENTINEL</div>
+      <div class="sub">BlackStone Development</div>
+    </div>
+    <a href="/">Overview</a>
+    <a href="/timeline.html">Timeline</a>
+    <a href="/performance.html">Performance</a>
+    <a href="/economy.html">Economy</a>
+    <a href="/players.html">Players</a>
+    <a class="active" href="/staff.html">Staff Log</a>
+    <a href="#">Alerts</a>
+    <a href="#">Settings</a>
+    <div class="foot">
+      <div class="st"><span class="pulse" id="agent-pulse"></span> <span id="agent-state">Connecting…</span></div>
+      <div id="agent-note">—</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="server-select">srv_FAKE_LEGACY_RP</div>
+      <nav class="subtabs" id="views">
+        <button class="on" data-view="actions">Actions</button>
+        <button data-view="staffers">By Staffer</button>
+        <button data-view="removals">Removals</button>
+      </nav>
+      <div class="who">
+        <span class="role">OWNER</span>
+        <div class="avatar">BW</div>
+      </div>
+    </header>
+
+    <div class="pagehead">
+      <h1 class="disp">Staff Log</h1>
+      <span class="count"><b id="act-count">0</b> actions recorded · <b id="staff-count">0</b> staff active</span>
+    </div>
+
+    <!-- ACTIONS -->
+    <section id="view-actions">
+      <div class="searchrow">
+        <input type="search" id="search" placeholder="Search staffer, target, or action…">
+      </div>
+      <section class="pane">
+        <table>
+          <thead><tr><th>Time</th><th>Staffer</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+          <tbody id="actions"><tr><td colspan="5"><div class="empty">Waiting for staff activity…</div></td></tr></tbody>
+        </table>
+      </section>
+    </section>
+
+    <!-- BY STAFFER -->
+    <section id="view-staffers" class="hidden">
+      <div class="staffgrid" id="staffers"></div>
+    </section>
+
+    <!-- REMOVALS -->
+    <section id="view-removals" class="hidden">
+      <section class="pane">
+        <table>
+          <thead><tr><th>Time</th><th>Player</th><th>Reason</th><th>Session</th></tr></thead>
+          <tbody id="removals"><tr><td colspan="4"><div class="empty">No bans or kicks recorded.</div></td></tr></tbody>
+        </table>
+      </section>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function ts(ms){ return new Date(ms).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' }); }
+
+let allActions = [], allStaffers = [], allDrops = [];
+
+function renderActions() {
+  const q = $('search').value.trim().toLowerCase();
+  const rows = allActions.filter(e => {
+    if (!q) return true;
+    const d = e.data || {};
+    return [d.staffer, d.action, d.target, d.detail].join(' ').toLowerCase().includes(q);
+  });
+  $('actions').innerHTML = rows.length ? rows.map(e => {
+    const d = e.data || {};
+    return `<tr>
+      <td class="ts">${ts(e.t)}</td>
+      <td class="pname">${esc(d.staffer || '—')}</td>
+      <td><span class="act ${esc(d.action || '')}">${esc(d.action || '—')}</span></td>
+      <td>${esc(d.target || '—')}</td>
+      <td class="desc">${esc(d.detail || '')}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5"><div class="empty">No actions match.</div></td></tr>';
+}
+
+function renderStaffers() {
+  $('staffers').innerHTML = allStaffers.length ? allStaffers.map(s => {
+    const rows = Object.entries(s.actions).sort((a,b) => b[1]-a[1])
+      .map(([a,n]) => `<div class="abar"><span>${esc(a)}</span><b>${n}</b></div>`).join('');
+    const big = s.money_given > 500000;
+    return `<article class="staffcard ${big ? 'hot' : ''}">
+      <h3>${esc(s.staffer)}</h3>
+      <div class="tot">${s.total} actions · last ${ts(s.last_seen)}</div>
+      ${rows}
+      ${s.money_given ? `<div class="money ${big ? 'big' : ''}">$${s.money_given.toLocaleString()} handed out</div>` : ''}
+    </article>`;
+  }).join('') : '<div class="pane"><div class="empty">No staff activity recorded.</div></div>';
+}
+
+function renderRemovals() {
+  $('removals').innerHTML = allDrops.length ? allDrops.map(e => {
+    const d = e.data || {};
+    return `<tr>
+      <td class="ts">${ts(e.t)}</td>
+      <td class="pname">${esc(d.player || '—')}</td>
+      <td class="desc">${esc(d.reason || '—')}</td>
+      <td class="num">${d.session_s ? Math.round(d.session_s/60) + 'm' : '—'}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="4"><div class="empty">No bans or kicks recorded.</div></td></tr>';
+}
+
+async function refresh() {
+  try {
+    const o = await (await fetch('/v1/staff')).json();
+    $('agent-pulse').classList.remove('dead');
+    $('agent-state').textContent = 'Backend linked';
+    $('agent-note').textContent = 'refreshing every 5 s';
+
+    allActions = o.actions || [];
+    allStaffers = o.staffers || [];
+    allDrops = o.drops || [];
+    $('act-count').textContent = (o.total || 0).toLocaleString();
+    $('staff-count').textContent = allStaffers.length;
+
+    renderActions(); renderStaffers(); renderRemovals();
+  } catch (err) {
+    $('agent-pulse').classList.add('dead');
+    $('agent-state').textContent = 'Backend unreachable';
+    $('agent-note').textContent = 'is server.js running?';
+  }
+}
+
+$('search').addEventListener('input', renderActions);
+$('views').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  document.querySelectorAll('#views button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  for (const v of ['actions','staffers','removals']) {
+    $('view-' + v).classList.toggle('hidden', btn.dataset.view !== v);
+  }
+});
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
