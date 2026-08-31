@@ -1,18 +1,13 @@
 {
-  "name": "sentinel",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "blackstone-web",
+  "version": "0.1.0",
+  "description": "blackstonescripts.com — public site and free browser-side diagnostic tools",
+  "type": "module",
+  "private": true,
   "scripts": {
-    "test": "node --test core/*.test.js"
+    "test": "node --test test/*.test.js",
+    "serve": "npx serve ."
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "express": "^5.2.1",
-    "ulid": "^3.0.2",
-    "zod": "^4.4.3"
-  }
+  "author": "BlackStone Development",
+  "license": "SEE LICENSE IN LICENSE"
 }
