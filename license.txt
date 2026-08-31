@@ -1,0 +1,39 @@
+BlackStone Development Source-Available License
+Version 1.0 — August 27, 2026
+
+Copyright (c) 2026 BlackStone Development. All rights reserved.
+
+This repository (the "Software"), including its code, signature database,
+documentation, and test fixtures, is made available for viewing so that anyone
+can verify what the hosted tools at blackstonescripts.com do with their data.
+
+You may:
+  1. View, read, and study the Software.
+  2. Run the hosted tools at blackstonescripts.com for any lawful purpose.
+  3. Run the Software locally, unmodified, for the purpose of verifying the
+     behaviour of the hosted tools.
+  4. Submit issues, crash signatures, and pull requests. By submitting a
+     contribution you grant BlackStone Development a perpetual, irrevocable,
+     worldwide licence to use it in the Software and in any BlackStone product.
+
+You may not, without prior written permission from BlackStone Development:
+  1. Copy, host, deploy, or distribute the Software or any substantial part
+     of it (including signatures.json) as, or inside, any other website,
+     product, tool, or service, whether free or paid.
+  2. Create derivative works of the Software for distribution or hosting.
+  3. Remove or alter this notice or any attribution.
+
+No trademark rights are granted. "BlackStone Development", "BSD ARCH", and
+"Sentinel" are marks of BlackStone Development.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. Findings produced by the tools are diagnostic aids, not guarantees.
+IN NO EVENT SHALL BLACKSTONE DEVELOPMENT BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+Third-party material: the crash word list originates from CitizenFX's
+CrashWordList.h (itself derived from zacharyvoase/humanhash) and the entries
+in official_hashes originate from CitizenFX's crash-data.json; those remain
+under their original licences.
+
+Contact: hello@blackstonescripts.com
