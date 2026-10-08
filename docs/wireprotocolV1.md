@@ -3,6 +3,7 @@
 The contract between the on-server agent and the Sentinel backend.
 Everything else in the system hangs off this document. Changes require a version bump.
 (v1 amended pre-release, Aug 7 2026: added `vehicle.spawn`, provenance rule.)
+(v1 amended pre-release, Oct 7 2026: added `GET /v1/whoami`; `player_id` pseudonyms replace raw `license`; `econ.txn.account`; `econ.set`.)
 
 ---
 
@@ -13,6 +14,12 @@ Everything else in the system hangs off this document. Changes require a version
 - `Authorization: Bearer <server_token>` — issued at link time, **never in the body**
 - Agent flushes a batch every **5 seconds** or at **100 buffered events**, whichever comes first
 - Hard caps: **500 events / 256 KB** per batch. Agent splits oversized batches.
+
+### Identity lookup
+
+- `GET https://api.<sentinel-domain>/v1/whoami` with the same bearer token
+- Returns `{ "ok": true, "protocol": 1, "server_id": "srv_...", "name": "..." }`, or `401 auth_failed`
+- The agent calls it at boot, so the only setting an owner has to paste is the token.
 
 ## Batch envelope
 
@@ -51,7 +58,7 @@ Everything else in the system hangs off this document. Changes require a version
   "src": "server",
   "data": {
     "player": "Kaiden_R",
-    "license": "license:abc123",
+    "player_id": "9f2c41d07ab35e1c8d6f0a4b2e7c9d13",
     "reason": "Banned: mod menu detection (txAdmin)",
     "session_s": 5460
   }
@@ -75,10 +82,11 @@ Everything else in the system hangs off this document. Changes require a version
 | `server.hitch` | Hitch warning observed | `ms`, `players`, `active_resources` |
 | `server.resource` | Resource start/stop/restart | `resource`, `action`, `by` (if known) |
 | `server.manifest` | Resource added/removed on disk | `resource`, `change` |
-| `player.join` | Player connects | `player`, `license`, `identifiers_hash` |
-| `player.drop` | Any drop, any cause | `player`, `license`, `reason`, `session_s` — the ban/kick ledger lives here |
+| `player.join` | Player connects | `player`, `player_id`, `identifiers_hash` (HMAC pseudonyms, never raw identifiers) |
+| `player.drop` | Any drop, any cause | `player`, `player_id`, `reason`, `session_s` — the ban/kick ledger lives here |
 | `perf.resmon` | 30s aggregation window closes | `resource`, `avg_ms`, `peak_ms`, `samples` |
-| `econ.txn` | Money moves | `player`, `direction`, `amount`, `source`, `balance_after` |
+| `econ.txn` | Money moves | `player`, `player_id`, `direction`, `amount`, `account`, `source`, `balance_after` |
+| `econ.set` | Balance overwritten | `player`, `player_id`, `account`, `value`, `delta` (if known), `source` |
 | `vehicle.spawn` | Vehicle created for a player | `model`, `method` (garage/dealer/admin/script), `source`, `by` |
 | `staff.action` | Staff-privileged act observed | `staffer`, `action`, `target`, `detail` |
 | `net.rate` | 60s window closes | `event`, `top_sender`, `count` — event-spam visibility |

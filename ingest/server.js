@@ -137,8 +137,14 @@ async function fireAlert(serverId, f) {
 async function runDetection(serverId) {
   const recent = store.events.filter((e) => e.server_id === serverId).slice(-CONFIG.detectionWindow);
 
+  // Time windows are measured on the game server's own clock, anchored to its
+  // newest event, so a server whose clock runs a little fast or slow is still
+  // judged correctly (wire protocol: never trust agent clocks across servers).
+  let serverNow = 0;
+  for (const e of recent) if (e.t > serverNow) serverNow = e.t;
+
   // Pass 1: economy anomalies. A key is reported once, ever.
-  for (const f of analyze(recent, {})) {
+  for (const f of analyze(recent, { now: serverNow || Date.now() })) {
     const { inserted } = await db.saveFinding(serverId, f, { refresh: false });
     if (!inserted) continue;
     store.findings.unshift({ ...f, server_id: serverId });
@@ -251,6 +257,22 @@ app.post('/v1/ingest', async (req, res) => {
   }
 
   res.json({ ok: true, received, deduped, commands: [] });
+});
+
+// ---- GET /v1/whoami — an agent learns its own server_id from its token ------
+// This is what lets setup be one line in server.cfg: the token alone.
+app.get('/v1/whoami', async (req, res) => {
+  const auth = await db.authenticate(bearerToken(req));
+  if (!auth.ok) {
+    return res.status(401).json({ ok: false, error: { code: 'auth_failed' } });
+  }
+  const s = auth.server;
+  res.json({
+    ok: true,
+    protocol: 1,
+    server_id: s.dev ? 'srv_DEV_LOCAL' : s.id,
+    name: s.name,
+  });
 });
 
 // ---- Everything below needs the portal login ------------------------------

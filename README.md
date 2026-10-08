@@ -15,7 +15,9 @@ ingest/migrations/      numbered SQL migrations; never edit one that has shipped
 ingest/auth.js          agent bearer tokens, portal login (HTTP Basic until Clerk)
 ingest/privacy.js       data-contract gate: secrets and raw identifiers are rejected
 core/                   detection modules (pure: events in, findings out)
-agent/fake-agent.js     synthetic agent; the reference for the real Lua agent
+agent/fivem/bsd_sentinel_agent/   the FiveM agent resource (see its README to install)
+agent/fivem/test/run.lua          agent crypto + scrubber tests: lua agent/fivem/test/run.lua
+agent/fake-agent.js     synthetic agent for testing without a game server
 scripts/servers.js      link / list / revoke game servers
 portal/                 the portal pages
 docs/                   wire protocol, data contract, finding schema
@@ -84,6 +86,11 @@ It prints a `server_id` and a token **once**. Only the token's hash is stored.
 `npm run server:list` shows linked servers; `npm run server:revoke -- srv_...`
 cuts one off.
 
+### Connect a FiveM server
+
+Follow `agent/fivem/bsd_sentinel_agent/README.md`: copy the folder into the
+server's resources, add `set sentinel_token "sst_..."` to `server.cfg`, ensure it.
+
 ### Point the fake agent at it
 
 ```powershell
@@ -108,4 +115,4 @@ npm run fake-agent
 
 - Server binding (IP + port lock) and self-service rebind: the columns exist, enforcement doesn't.
 - Accounts and teams (Clerk); until then the portal shows every linked server together.
-- The real Lua agent.
+- Per-resource CPU time in the agent, ESX money events, and RedM.
