@@ -1,0 +1,53 @@
+# DigitalOcean App Platform spec for the Sentinel backend.
+# One web service serves both doors: agents post to /v1/ingest, people use the portal.
+#
+# Before using this file, change cluster_name below to your database cluster's
+# name exactly as it appears under Databases in the DigitalOcean console.
+# The console wizard (README, "Deploy to DigitalOcean") builds the same thing.
+#
+# PORT is set by App Platform from http_port; don't add it yourself.
+
+name: sentinel
+region: sfo
+
+services:
+  - name: web
+    github:
+      repo: BingoWings247/sentinel
+      branch: main
+      deploy_on_push: true
+    environment_slug: node-js
+    run_command: npm start
+    http_port: 8080
+    instance_count: 1
+    health_check:
+      http_path: /healthz
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_AND_BUILD_TIME
+      - key: DATABASE_URL
+        value: ${sentinel-db.DATABASE_URL}
+        scope: RUN_TIME
+      - key: DATABASE_CA_CERT
+        value: ${sentinel-db.CA_CERT}
+        scope: RUN_TIME
+      - key: PORTAL_USER
+        value: admin
+        scope: RUN_TIME
+      # Set the real values in the console (Settings > web > Environment Variables),
+      # tick Encrypt, and never commit them here.
+      - key: PORTAL_PASSWORD
+        type: SECRET
+        scope: RUN_TIME
+      - key: SENTINEL_WEBHOOK
+        type: SECRET
+        scope: RUN_TIME
+
+databases:
+  - name: sentinel-db
+    engine: PG
+    production: true
+    cluster_name: CHANGE-ME-to-your-cluster-name
+    db_name: defaultdb
+    db_user: doadmin

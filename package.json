@@ -1,13 +1,26 @@
 {
-  "name": "blackstone-web",
-  "version": "0.1.0",
-  "description": "blackstonescripts.com — public site and free browser-side diagnostic tools",
-  "type": "module",
+  "name": "sentinel",
+  "version": "0.2.0",
+  "description": "Sentinel — server observability backend for FiveM and RedM (BlackStone Development)",
   "private": true,
+  "main": "ingest/server.js",
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "serve": "npx serve ."
+    "start": "node ingest/server.js",
+    "test": "node --test \"core/*.test.js\" \"ingest/*.test.js\"",
+    "fake-agent": "node agent/fake-agent.js",
+    "server:create": "node scripts/servers.js create",
+    "server:list": "node scripts/servers.js list",
+    "server:revoke": "node scripts/servers.js revoke"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.23.1",
+    "ulid": "^3.0.2",
+    "zod": "^4.4.3"
   },
   "author": "BlackStone Development",
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "SEE LICENSE IN license.txt"
 }

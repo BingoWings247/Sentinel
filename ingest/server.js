@@ -1,18 +1,17 @@
-// Sentinel ingest — wire protocol v1 (vertical slice)
-// Run: $env:SENTINEL_WEBHOOK="<webhook url>"  then  node ingest/server.js
+// Sentinel ingest — wire protocol v1
+// Local:       node ingest/server.js            (no DATABASE_URL = in-memory dev mode)
+// Production:  DigitalOcean App Platform, Postgres via DATABASE_URL (see README)
 
 const express = require('express');
 const path = require('path');
 const { z } = require('zod');
 const { analyze } = require('../core/econ-anomaly');
 const { diagnose } = require('../core/hitch-diagnosis');
+const { loadConfig } = require('./config');
+const { bearerToken, portalAuth } = require('./auth');
+const { scanForSecrets } = require('./privacy');
 
-const CONFIG = {
-  port: 3000,
-  devToken: 'dev_token_change_me',
-  maxEvents: 500,
-  discordWebhook: process.env.SENTINEL_WEBHOOK || '', // env only — NEVER paste the URL here
-};
+const CONFIG = loadConfig();
 
 // ---- Wire protocol v1 schemas -------------------------------------------
 const EventSchema = z.object({
@@ -37,14 +36,32 @@ const BatchSchema = z.object({
   events: z.array(EventSchema).max(CONFIG.maxEvents),
 });
 
-// ---- In-memory store (slice only — a real DB replaces this later) -------
+// ---- Storage ----------------------------------------------------------------
+// Postgres is the durable copy. `store` below is a bounded in-memory cache of
+// the most recent data, which the portal endpoints and detection read from.
+function openDatabase() {
+  if (CONFIG.databaseUrl) {
+    const { createPostgresStore } = require('./db-postgres');
+    return createPostgresStore({ databaseUrl: CONFIG.databaseUrl, caCert: CONFIG.databaseCaCert });
+  }
+  if (CONFIG.isProd) {
+    console.error('[sentinel-ingest] BOOT FAILED: DATABASE_URL is not set.');
+    console.error('  In production Sentinel stores everything in Postgres and will not run without it.');
+    console.error('  On DigitalOcean: App > Settings > the web service > Environment Variables,');
+    console.error('  set DATABASE_URL to ${<your-db-component>.DATABASE_URL} and DATABASE_CA_CERT to ${<your-db-component>.CA_CERT}.');
+    process.exit(1);
+  }
+  const { createMemoryStore } = require('./db-memory');
+  return createMemoryStore({ devToken: CONFIG.devToken });
+}
+
+const db = openDatabase();
+
 const store = {
   events: [],
-  seenIds: new Set(),
   lastSeq: new Map(),
   lastBatchAt: null,
   findings: [],
-  findingKeys: new Set(),
   alerts: [],
 };
 
@@ -82,14 +99,24 @@ async function notifyDiscord(f) {
   }
 }
 
-// ---- Alert rules (runtime-editable; moves to DB with the rest) -----------
+// ---- Alert rules (runtime-editable from the portal, saved to the database) --
 const RULES = {
   econ_anomaly:     { enabled: true, min_confidence: 'HIGH' },
   perf_hitch_issue: { enabled: true, min_confidence: 'HIGH' },
 };
 const RANK = { LOW: 1, MED: 2, HIGH: 3 };
 
-async function fireAlert(f) {
+function applyRules(saved) {
+  if (!saved || typeof saved !== 'object') return;
+  for (const key of Object.keys(RULES)) {
+    const r = saved[key];
+    if (!r) continue;
+    if (typeof r.enabled === 'boolean') RULES[key].enabled = r.enabled;
+    if (['LOW', 'MED', 'HIGH'].includes(r.min_confidence)) RULES[key].min_confidence = r.min_confidence;
+  }
+}
+
+async function fireAlert(serverId, f) {
   const key = f.type === 'econ.anomaly' ? 'econ_anomaly' : 'perf_hitch_issue';
   const rule = RULES[key] || { enabled: false, min_confidence: 'HIGH' };
   const record = { at: Date.now(), type: f.type, confidence: f.confidence, summary: f.summary, key: f.key, status: 'muted' };
@@ -102,18 +129,59 @@ async function fireAlert(f) {
   store.alerts.unshift(record);
   if (store.alerts.length > 200) store.alerts.length = 200;
   console.log(`[alert] ${record.status.toUpperCase()} — ${f.confidence} ${f.type}`);
+  db.saveAlert(serverId, record).catch((err) =>
+    console.error(`[alert] could not save the alert record to the database: ${err.message}`));
+}
+
+// ---- Detection: runs on one server's recent events after each batch ------
+async function runDetection(serverId) {
+  const recent = store.events.filter((e) => e.server_id === serverId).slice(-CONFIG.detectionWindow);
+
+  // Pass 1: economy anomalies. A key is reported once, ever.
+  for (const f of analyze(recent, {})) {
+    const { inserted } = await db.saveFinding(serverId, f, { refresh: false });
+    if (!inserted) continue;
+    store.findings.unshift({ ...f, server_id: serverId });
+    console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
+    fireAlert(serverId, f);
+  }
+
+  // Pass 2: hitch diagnosis. Grouped issues update in place; alert on first sighting.
+  for (const f of diagnose(recent, {})) {
+    const { inserted } = await db.saveFinding(serverId, f, { refresh: true });
+    const row = { ...f, server_id: serverId };
+    const idx = store.findings.findIndex((x) => x.key === f.key && x.server_id === serverId);
+    if (idx >= 0) store.findings[idx] = row;
+    else store.findings.unshift(row);
+    if (inserted) {
+      console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
+      fireAlert(serverId, f);
+    }
+  }
+
+  if (store.findings.length > 500) store.findings.length = 500;
 }
 
 const app = express();
+app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 
-// ---- POST /v1/ingest -----------------------------------------------------
-app.post('/v1/ingest', (req, res) => {
-  // Auth (subscription enforcement lives here eventually)
-  const auth = req.headers.authorization || '';
-  if (auth !== `Bearer ${CONFIG.devToken}`) {
+// ---- GET /healthz — open, for the platform's health check -----------------
+// Always 200 while the process is up, so a brief database failover doesn't
+// trigger a restart loop. The database state is reported in the body.
+app.get('/healthz', async (req, res) => {
+  let database = 'ok';
+  try { await db.ping(); } catch { database = 'unreachable'; }
+  res.json({ ok: true, store: db.mode, database });
+});
+
+// ---- POST /v1/ingest — agents only, bearer token ---------------------------
+app.post('/v1/ingest', async (req, res) => {
+  const auth = await db.authenticate(bearerToken(req));
+  if (!auth.ok) {
     return res.status(401).json({ ok: false, error: { code: 'auth_failed' } });
   }
+  const server = auth.server;
 
   // Validate against the spec — specific, machine-readable rejection (Rule 4/5)
   const parsed = BatchSchema.safeParse(req.body);
@@ -128,67 +196,65 @@ app.post('/v1/ingest', (req, res) => {
       },
     });
   }
-
   const batch = parsed.data;
 
+  // A token belongs to exactly one server.
+  if (!server.dev && batch.server_id !== server.id) {
+    return res.status(403).json({
+      ok: false,
+      error: { code: 'server_mismatch', field: 'server_id', detail: 'server_id does not belong to this token' },
+    });
+  }
+
+  // Data contract: no secrets or raw identifiers get stored. Name the pattern, never the value.
+  for (let i = 0; i < batch.events.length; i++) {
+    const hit = scanForSecrets(batch.events[i].data);
+    if (hit) {
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'invalid_event', index: i, field: hit.path, detail: `value matched the ${hit.pattern} pattern` },
+      });
+    }
+  }
+
+  const serverId = server.dev ? batch.server_id : server.id;
+
   // Seq gap detection — dropped batches are observable, never silent (Rule 5)
-  const last = store.lastSeq.get(batch.server_id);
+  const last = server.last_seq ?? store.lastSeq.get(serverId);
   if (last !== undefined && batch.seq > last + 1) {
     console.warn(
-      `[ingest] SEQ GAP for ${batch.server_id}: ${last} -> ${batch.seq} ` +
+      `[ingest] SEQ GAP for ${serverId}: ${last} -> ${batch.seq} ` +
       `(${batch.seq - last - 1} batch(es) missing)`
     );
   }
-  store.lastSeq.set(batch.server_id, batch.seq);
+  store.lastSeq.set(serverId, batch.seq);
 
-  // Dedupe on event id — retries are free
-  let received = 0;
-  let deduped = 0;
-  for (const ev of batch.events) {
-    if (store.seenIds.has(ev.id)) { deduped++; continue; }
-    store.seenIds.add(ev.id);
-    store.events.push({ ...ev, server_id: batch.server_id, received_at: Date.now() });
-    received++;
+  // Durable write first; the cache only ever holds what the database accepted.
+  const { received, deduped, inserted } = await db.recordBatch({ ...server, id: serverId }, batch);
+  for (const ev of inserted) store.events.push(ev);
+  if (store.events.length > CONFIG.recentEventCap) {
+    store.events.splice(0, store.events.length - CONFIG.recentEventCap);
   }
   store.lastBatchAt = Date.now();
 
-  // Ring-buffer the slice store: cap memory, keep dedupe honest
-  if (store.events.length > 20000) {
-    const removed = store.events.splice(0, store.events.length - 20000);
-    for (const ev of removed) store.seenIds.delete(ev.id);
-  }
-
   console.log(
-    `[ingest] seq=${batch.seq} ${batch.server_id}: ` +
-    `received=${received} deduped=${deduped} stored_total=${store.events.length}`
+    `[ingest] seq=${batch.seq} ${serverId}: ` +
+    `received=${received} deduped=${deduped} cached=${store.events.length}`
   );
 
-  // ---- Detection pass 1: economy anomalies -------------------------------
-   const recentEvents = store.events.slice(-4000);
-   const newFindings = analyze(recentEvents, {});
-  for (const f of newFindings) {
-    if (store.findingKeys.has(f.key)) continue;
-    store.findingKeys.add(f.key);
-    store.findings.unshift(f);
-    console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
-    fireAlert(f);
-  }
-
-  // ---- Detection pass 2: hitch diagnosis (grouped issues update in place) -
-   const hitchIssues = diagnose(recentEvents, {});
-  for (const f of hitchIssues) {
-    const idx = store.findings.findIndex((x) => x.key === f.key);
-    if (idx >= 0) {
-      store.findings[idx] = f; // refresh count / last_seen / worst
-    } else {
-      store.findings.unshift(f);
-      console.log(`[core] FINDING ${f.confidence}: ${f.summary}`);
-      fireAlert(f);
-    }
+  // The batch is already saved, so a detection failure is logged, not returned:
+  // making the agent retry would change nothing.
+  try {
+    await runDetection(serverId);
+  } catch (err) {
+    console.error(`[core] detection pass failed for ${serverId}: ${err.message}`);
   }
 
   res.json({ ok: true, received, deduped, commands: [] });
 });
+
+// ---- Everything below needs the portal login ------------------------------
+app.use(portalAuth({ user: CONFIG.portalUser, password: CONFIG.portalPassword }));
 
 // ---- Portal static hosting ----------------------------------------------
 app.use(express.static(path.join(__dirname, '..', 'portal')));
@@ -241,25 +307,6 @@ app.get('/v1/events', (req, res) => {
 // ---- GET /v1/findings ----------------------------------------------------
 app.get('/v1/findings', (req, res) => {
   res.json({ ok: true, total: store.findings.length, findings: store.findings.slice(0, 50) });
-});
-
-// ---- Malformed JSON bodies get a real answer, not an HTML stack trace ----
-// (error middleware stays LAST — Express convention)
-app.use((err, req, res, next) => {
-  if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({
-      ok: false,
-      error: { code: 'invalid_json', detail: err.message },
-    });
-  }
-  if (err.type === 'entity.too.large') {
-    return res.status(413).json({
-      ok: false,
-      error: { code: 'batch_too_large', detail: 'body exceeds 256kb' },
-    });
-  }
-  console.error('[ingest] UNHANDLED:', err);
-  res.status(500).json({ ok: false, error: { code: 'internal', detail: err.message } });
 });
 
 // ---- GET /v1/players — roster aggregation --------------------------------
@@ -338,13 +385,9 @@ app.get('/v1/alerts', (req, res) => {
   });
 });
 
-app.post('/v1/alerts/rules', (req, res) => {
-  const body = req.body || {};
-  for (const key of Object.keys(RULES)) {
-    if (!body[key]) continue;
-    if (typeof body[key].enabled === 'boolean') RULES[key].enabled = body[key].enabled;
-    if (['LOW','MED','HIGH'].includes(body[key].min_confidence)) RULES[key].min_confidence = body[key].min_confidence;
-  }
+app.post('/v1/alerts/rules', async (req, res) => {
+  applyRules(req.body || {});
+  await db.saveRules(RULES);
   console.log('[alert] rules updated:', JSON.stringify(RULES));
   res.json({ ok: true, rules: RULES });
 });
@@ -405,13 +448,93 @@ app.get('/v1/economy', (req, res) => {
   });
 });
 
-// ---- Boot self-report (Rule 1) -------------------------------------------
-app.listen(CONFIG.port, () => {
-  console.log('[sentinel-ingest] BOOT OK');
-  console.log(`  port:     ${CONFIG.port}`);
-  console.log(`  auth:     static dev token — replace before anything public`);
-  console.log(`  store:    in-memory (volatile, lost on restart)`);
-  console.log(`  protocol: v1 · max ${CONFIG.maxEvents} events/batch · 256kb limit`);
-  console.log(`  notify:   ${CONFIG.discordWebhook ? 'Discord webhook configured' : 'no webhook (set SENTINEL_WEBHOOK)'}`);
-  console.log(`  waiting on POST /v1/ingest ...`);
+// ---- Errors get a real answer, not an HTML stack trace -----------------------
+// (error middleware stays LAST — Express convention)
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'invalid_json', detail: err.message },
+    });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      ok: false,
+      error: { code: 'batch_too_large', detail: 'body exceeds 256kb' },
+    });
+  }
+  // Database messages can carry hostnames and values: log them, don't echo them.
+  console.error(`[ingest] UNHANDLED on ${req.method} ${req.path}: ${err.message}`);
+  res.status(500).json({ ok: false, error: { code: 'internal', detail: 'internal error, see the server log' } });
+});
+
+// ---- Retention: raw events older than the data contract allows are deleted --
+function scheduleRetention() {
+  const run = async () => {
+    try {
+      const { events } = await db.purge(CONFIG.retentionDays);
+      const cutoff = Date.now() - CONFIG.retentionDays * 86_400_000;
+      store.events = store.events.filter((e) => e.received_at >= cutoff);
+      console.log(`[retention] removed ${events} event(s) older than ${CONFIG.retentionDays} days`);
+    } catch (err) {
+      console.error(`[retention] purge failed, will retry in 24h: ${err.message}`);
+    }
+  };
+  setTimeout(run, 60_000);
+  setInterval(run, 86_400_000);
+}
+
+// ---- Boot ------------------------------------------------------------------
+async function main() {
+  let migrations;
+  try {
+    migrations = await db.init();
+  } catch (err) {
+    console.error('[sentinel-ingest] BOOT FAILED: could not prepare the database.');
+    console.error(`  ${err.message}`);
+    console.error('  Check DATABASE_URL, DATABASE_CA_CERT, and that this app is a Trusted Source on the database.');
+    process.exit(1);
+  }
+
+  const warm = await db.loadRecent({ events: CONFIG.recentEventCap });
+  store.events = warm.events;
+  store.findings = warm.findings;
+  store.alerts = warm.alerts;
+  applyRules(warm.rules);
+  if (store.events.length) store.lastBatchAt = store.events[store.events.length - 1].received_at;
+
+  const server = app.listen(CONFIG.port, () => {
+    console.log('[sentinel-ingest] BOOT OK');
+    console.log(`  port:       ${CONFIG.port}`);
+    console.log(`  store:      ${db.describe()}`);
+    if (db.mode === 'postgres') {
+      console.log(`  migrations: ${migrations.applied.length ? `applied ${migrations.applied.join(', ')}` : `up to date (${migrations.total})`}`);
+    }
+    console.log(`  restored:   ${store.events.length} events, ${store.findings.length} findings, ${store.alerts.length} alerts`);
+    console.log(`  agents:     ${db.mode === 'memory' ? 'dev token only (SENTINEL_DEV_TOKEN)' : 'per-server tokens (npm run server:create)'}`);
+    console.log(`  portal:     login required, user "${CONFIG.portalUser}"`);
+    if (CONFIG.portalPasswordGenerated) console.log(`  portal pw:  ${CONFIG.portalPassword}   (one-time, set PORTAL_PASSWORD)`);
+    console.log(`  retention:  raw events ${CONFIG.retentionDays} days`);
+    console.log(`  protocol:   v1 · max ${CONFIG.maxEvents} events/batch · 256kb limit`);
+    console.log(`  notify:     ${CONFIG.discordWebhook ? 'Discord webhook configured' : 'no webhook (set SENTINEL_WEBHOOK)'}`);
+    for (const f of CONFIG.fallbacks) console.log(`  fallback:   ${f}`);
+    for (const w of [...CONFIG.warnings, db.sslWarning].filter(Boolean)) console.warn(`  WARNING:    ${w}`);
+    console.log('  waiting on POST /v1/ingest ...');
+  });
+
+  scheduleRetention();
+
+  // DigitalOcean sends SIGTERM on every deploy: finish in-flight requests, then close the pool.
+  const shutdown = (sig) => {
+    console.log(`[sentinel-ingest] ${sig} received, shutting down`);
+    server.close(() => db.close().finally(() => process.exit(0)));
+    setTimeout(() => process.exit(0), 10_000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
+main().catch((err) => {
+  console.error(`[sentinel-ingest] BOOT FAILED: ${err.message}`);
+  process.exit(1);
 });

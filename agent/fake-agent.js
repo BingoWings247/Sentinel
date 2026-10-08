@@ -1,18 +1,28 @@
 // Sentinel fake agent — synthetic batch generator (wire protocol v1)
-// Save as: C:\dev\sentinel\agent\fake-agent.js
-// Run:     node agent/fake-agent.js   (in a SECOND terminal, with server.js running)
+// Local (server.js in memory mode):   node agent/fake-agent.js
+// Against a deployed backend, set these first (PowerShell: $env:NAME="value"):
+//   SENTINEL_URL        e.g. https://api.blackstonescripts.com   (default http://localhost:3000)
+//   SENTINEL_TOKEN      the token printed by npm run server:create
+//   SENTINEL_SERVER_ID  the server_id printed with it
 //
 // This file is the reference implementation for the real Lua agent later —
 // keep it honest to the spec.
 
+const crypto = require('crypto');
 const { ulid } = require('ulid');
 
 const CONFIG = {
-  endpoint: 'http://localhost:3000/v1/ingest',
-  token: 'dev_token_change_me',
-  serverId: 'srv_FAKE_LEGACY_RP',
+  endpoint: `${(process.env.SENTINEL_URL || 'http://localhost:3000').replace(/\/+$/, '')}/v1/ingest`,
+  token: process.env.SENTINEL_TOKEN || 'dev_token_change_me',
+  serverId: process.env.SENTINEL_SERVER_ID || 'srv_FAKE_LEGACY_RP',
   flushIntervalMs: 5000,
 };
+
+// Data contract Class I: raw licenses never leave the server. The agent sends
+// an HMAC pseudonym keyed by a tenant key that is never transmitted.
+const TENANT_KEY = crypto.randomBytes(32);
+const pseudonym = (identifier) =>
+  crypto.createHmac('sha256', TENANT_KEY).update(identifier).digest('hex').slice(0, 32);
 
 const bootedAt = Date.now();
 let seq = 0;
@@ -39,9 +49,10 @@ function makeEvent() {
   const base = { id: `evt_${ulid()}`, t: Date.now(), src: 'server' };
 
   if (roll < 0.30) {
+    const player = pick(PLAYERS);
     return { ...base, type: 'player.join', data: {
-      player: pick(PLAYERS),
-      license: `license:${ulid().slice(0, 12).toLowerCase()}`,
+      player,
+      player_id: pseudonym(`license:${player.toLowerCase()}`),
     }};
   }
   if (roll < 0.50) {
@@ -131,7 +142,7 @@ async function flush() {
       console.error(`[fake-agent] REJECTED seq=${batch.seq}:`, JSON.stringify(body.error));
     }
   } catch (err) {
-    console.error(`[fake-agent] network fail seq=${batch.seq}: ${err.message} (is server.js running?)`);
+    console.error(`[fake-agent] network fail seq=${batch.seq}: ${err.message} (is the backend up at ${CONFIG.endpoint}?)`);
   }
 }
 
