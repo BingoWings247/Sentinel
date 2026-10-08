@@ -51,5 +51,38 @@ eq('provenance untouched', SA.scrubString('bsd_banking:deposit'), 'bsd_banking:d
 eq('same identifier, same pseudonym', SA.pseudonym('license:abc'), SA.pseudonym('license:abc'))
 check('pseudonym is 32 hex', SA.pseudonym('license:abc'):match('^%x+$') and #SA.pseudonym('license:abc') == 32)
 
+-- Money adapter: who moved the money. qbx_core fires the event, so the
+-- script can only be named by its "<resource>:<action>" reason.
+local running = { qbx_core = true, bsd_banking = true }
+GetResourceState = function(r) return running[r] and 'started' or 'missing' end
+local handlers = {}
+AddEventHandler = function(name, fn) handlers[name] = fn end
+exports = setmetatable({}, { __index = function() return setmetatable({}, { __index = function()
+    return function() return { PlayerData = { money = { cash = 900, bank = 5000 } } } end end }) end })
+dofile(SERVER .. 'adapters/qbcore.lua')
+local sent = {}
+SA.emit = function(t, data, src) sent[#sent + 1] = { type = t, data = data, src = src } end
+SA.playerRef = function() return 'D. Baillie', 'pid' end
+
+eq('adapter starts on qbox', SA.startQbcoreAdapter(), 'qbox')
+local onMoney = handlers['QBCore:Server:OnMoneyChange']
+local function money(reason)
+    sent = {}
+    onMoney(1, 'cash', 100, 'add', reason)
+    return sent[1]
+end
+local e = money('bsd_banking:withdraw')
+eq('named script is the src', e.src, 'bsd_banking')
+eq('reason kept as source', e.data.source, 'bsd_banking:withdraw')
+eq('framework recorded as via', e.data.via, 'qbx_core')
+eq('no reason: src is the framework', money(nil).src, 'qbx_core')
+eq('no reason: source unknown', money(nil).data.source, 'unknown')
+eq('Unknown folds to unknown', money('Unknown').data.source, 'unknown')
+eq('blank folds to unknown', money('  ').data.source, 'unknown')
+eq('free-text reason kept', money('Bank deposit').data.source, 'Bank deposit')
+eq('free-text reason: src is the framework', money('Bank deposit').src, 'qbx_core')
+eq('prefix of a resource not running: src is the framework', money('fake_script:give').src, 'qbx_core')
+eq('remove is direction out', (function() sent = {}; onMoney(1, 'cash', 5, 'remove', 'x'); return sent[1].data.direction end)(), 'out')
+
 print(('%d passed, %d failed'):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

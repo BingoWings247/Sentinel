@@ -94,3 +94,9 @@ test('events outside the window are ignored', () => {
   const findings = analyze(stale, { now: NOW });
   assert.equal(findings.length, 0);
 });
+// ---- provenance folding --------------------------------------------------
+test('"Unknown" (capital U, as some scripts pass it) counts as unsourced', () => {
+  const findings = analyze(dupeBurst('Kaiden', { source: 'Unknown' }), { now: NOW });
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].confidence, 'HIGH');
+});

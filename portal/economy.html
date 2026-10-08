@@ -136,7 +136,7 @@ async function refresh() {
     // sources
     $('sources').innerHTML = o.sources.length ? o.sources.map(s => `
       <tr>
-        <td class="srcname ${s.source === 'unknown' ? 'unk' : ''}">${esc(s.source)}</td>
+        <td class="srcname ${s.source === 'unknown' ? 'unk' : ''}"${s.source === 'unknown' ? ' title="Money moved by a script that gave no reason"' : ''}>${s.source === 'unknown' ? 'unknown · no reason given' : esc(s.source)}</td>
         <td class="num">${money(s.in)}</td>
         <td class="num">${money(s.out)}</td>
         <td class="num">${s.count}</td>

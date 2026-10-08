@@ -4,7 +4,7 @@ lua54 'yes'
 
 name 'bsd_sentinel_agent'
 author 'BlackStone Development'
-version '0.1.0'
+version '0.1.1'
 description 'Sentinel agent: sends this server\'s health, players and money events to Sentinel'
 
 -- Server-side only. Nothing is sent to players' game clients.

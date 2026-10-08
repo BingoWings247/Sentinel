@@ -67,17 +67,22 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const SEV = { 'server.hitch':'warn', 'player.drop':'crit', 'player.join':'ok', 'econ.txn':'info', 'perf.resmon':'info' };
+const SEV = { 'server.hitch':'warn', 'player.drop':'crit', 'player.join':'ok', 'econ.txn':'info', 'econ.set':'warn', 'perf.resmon':'info' };
 
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Everything from the game server is untrusted text: player names are typed
+// by players. Escape it all before it touches innerHTML.
 function describe(ev) {
   const d = ev.data || {};
   switch (ev.type) {
-    case 'player.join':  return `<b>${d.player || '?'}</b> connected`;
-    case 'player.drop':  return `<b>${d.player || '?'}</b> dropped — ${d.reason || 'unknown'}`;
-    case 'econ.txn':     return `<b>${d.player || '?'}</b> ${d.direction === 'in' ? 'deposited' : 'withdrew'} $${(d.amount || 0).toLocaleString()}`;
-    case 'server.hitch': return `<b>Hitch warning</b> — ${d.ms} ms, ${d.players} players`;
-    case 'perf.resmon':  return `resmon window — <b>${d.resource}</b> avg ${d.avg_ms} ms`;
-    default:             return `<b>${ev.type}</b>`;
+    case 'player.join':  return `<b>${esc(d.player || '?')}</b> connected`;
+    case 'player.drop':  return `<b>${esc(d.player || '?')}</b> dropped — ${esc(d.reason || 'unknown')}`;
+    case 'econ.txn':
+    case 'econ.set':     return Sentinel.money(ev, { balance: false });
+    case 'server.hitch': return `<b>Hitch warning</b> — ${esc(d.ms)} ms, ${esc(d.players)} players`;
+    case 'perf.resmon':  return `resmon window — <b>${esc(d.resource)}</b> avg ${esc(d.avg_ms)} ms`;
+    default:             return `<b>${esc(ev.type)}</b>`;
   }
 }
 
@@ -99,13 +104,13 @@ async function refresh() {
     const ago = o.last_batch_ago_s;
     const stale = ago === null || ago > 15;
     $('agent-state').textContent = stale ? 'Agent silent' : 'Agent linked';
-    $('agent-batch').textContent = ago === null ? 'no batches yet' : `Last batch ${ago} s ago`;
+    $('agent-note').textContent = ago === null ? 'no batches yet' : `Last batch ${ago} s ago`;
     $('m-batch').textContent = ago === null ? 'Agent: no batches yet' : `Agent: batch ${ago} s ago`;
 
     // verdict
     $('stamp').textContent = 'OPERATIONAL BRIEF · LIVE SLICE';
     $('verdict-line').innerHTML = stale
-      ? 'Agent has gone <em>quiet</em> — is fake-agent.js running?'
+      ? 'Agent has gone <em>quiet</em> — is bsd_sentinel_agent running on your game server?'
       : `Pipeline is <em>alive</em>. ${o.total_events.toLocaleString()} events and counting.`;
 
     // vitals (flash cyan when the number changes)
@@ -137,20 +142,20 @@ async function refresh() {
     if (fo.findings.length) {
       document.getElementById('findings-empty').style.display = 'none';
       document.getElementById('findings').innerHTML = fo.findings.slice(0, 5).map(f =>
-        `<li><span class="ts">${ts(f.detected_at)}</span><span class="sev ${f.confidence === 'HIGH' ? 'crit' : 'warn'}"></span><span class="ev"><b>${f.confidence}</b> — ${f.summary}</span></li>`
+        `<li><span class="ts">${ts(f.detected_at)}</span><span class="sev ${f.confidence === 'HIGH' ? 'crit' : 'warn'}"></span><span class="ev"><b>${esc(f.confidence)}</b> — ${esc(f.summary)}</span></li>`
       ).join('');
     }
 
     // resource watch
     if (o.resources.length) {
       $('resmon').innerHTML = o.resources.map(r =>
-        `<tr><td class="rname">${r.name}</td><td class="num${r.avg_ms > 1.5 ? ' warn' : ''}">${r.avg_ms} ms</td><td class="num${r.peak_ms > 20 ? ' warn' : ''}">${r.peak_ms} ms</td></tr>`
+        `<tr><td class="rname">${esc(r.name)}</td><td class="num${r.avg_ms > 1.5 ? ' warn' : ''}">${r.avg_ms} ms</td><td class="num${r.peak_ms > 20 ? ' warn' : ''}">${r.peak_ms} ms</td></tr>`
       ).join('');
     }
   } catch (err) {
     $('agent-pulse').classList.add('dead');
     $('agent-state').textContent = 'Backend unreachable';
-    $('agent-batch').textContent = 'is server.js running?';
+    $('agent-note').textContent = 'is server.js running?';
     $('live-pill').textContent = '● OFFLINE';
     $('live-pill').classList.add('dead');
     $('verdict-line').innerHTML = 'Backend <em>unreachable</em> — is server.js running?';

@@ -4,7 +4,7 @@
 -- =============================================================================
 
 SA = SA or {}
-SA.VERSION = '0.1.0'
+SA.VERSION = '0.1.1'
 SA.RESOURCE = GetCurrentResourceName()
 
 -- ---- Logging (ARCH Rule 5: every fault says what happened and what to do) ----

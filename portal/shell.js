@@ -82,4 +82,37 @@
     noteEl.textContent = note || (ok ? '' : 'is server.js running?');
   };
   window.Sentinel.role = role;
+
+  // ---- Shared event rendering ---------------------------------------------
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const NO_REASON = new Set(['', 'unknown', 'none', 'n/a', 'nil', 'null', 'undefined']);
+  const usd = (n) => { n = Number(n) || 0; return (n < 0 ? '−' : '') + '$' + Math.abs(n).toLocaleString(); };
+
+  // Money lines are written from the player's account: "+$100 cash" means
+  // that much arrived in their cash. Never "deposited/withdrew": a bank
+  // deposit is cash going OUT of the wallet, which reads backwards.
+  window.Sentinel.money = function (ev, opts = {}) {
+    const d = ev.data || {};
+    const who = opts.player === false ? '' : `<b>${esc(d.player || '?')}</b> `;
+    const acct = esc(d.account || 'money');
+    const src = typeof d.source === 'string' ? d.source.trim() : '';
+    const reason = NO_REASON.has(src.toLowerCase())
+      ? '<span class="reason unk" title="The script that moved this money gave no reason">no reason given</span>'
+      : `<span class="reason">${esc(src)}</span>`;
+    if (ev.type === 'econ.set') {
+      const delta = typeof d.delta === 'number' ? ` (${d.delta >= 0 ? '+' : '−'}${usd(Math.abs(d.delta))})` : '';
+      return `${who}${acct} set to ${usd(d.value)}${delta} · ${reason}`;
+    }
+    const dir = d.direction === 'in' ? 'in' : 'out';
+    const bal = opts.balance !== false && typeof d.balance_after === 'number' ? ` · balance ${usd(d.balance_after)}` : '';
+    return `${who}<span class="amt ${dir}">${dir === 'in' ? '+' : '−'}${usd(d.amount)}</span> ${acct}${bal} · ${reason}`;
+  };
+
+  // Source column: the resource that moved it, plus the framework it went
+  // through when that's a different resource ("bsd_banking via qbx_core").
+  window.Sentinel.src = function (ev) {
+    const s = esc(ev.src || 'server');
+    const via = ev.data && ev.data.via;
+    return via && via !== ev.src ? `${s} <span class="via">via ${esc(via)}</span>` : s;
+  };
 })();

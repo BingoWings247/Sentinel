@@ -7,6 +7,8 @@
 // money that lacks a cause. Legitimate gains have provenance (a source).
 // Outcomes without causes have no innocent explanation.
 
+const { isUnsourced } = require('./provenance');
+
 const DEFAULTS = {
   windowMs: 10 * 60 * 1000,   // look-back window: 10 minutes
   gainThreshold: 100_000,     // net gain that earns scrutiny
@@ -58,7 +60,7 @@ function analyze(events, opts = {}) {
 
     // Provenance: how much of the gain has no source?
     const unsourcedGain = txns
-      .filter((e) => !e.data.source || e.data.source === 'unknown')
+      .filter((e) => isUnsourced(e.data.source))
       .reduce((s, e) => s + (e.data.amount || 0), 0);
     const unsourced = totalGain > 0 ? unsourcedGain / totalGain : 0;
 

@@ -85,8 +85,8 @@ Everything else in the system hangs off this document. Changes require a version
 | `player.join` | Player connects | `player`, `player_id`, `identifiers_hash` (HMAC pseudonyms, never raw identifiers) |
 | `player.drop` | Any drop, any cause | `player`, `player_id`, `reason`, `session_s` — the ban/kick ledger lives here |
 | `perf.resmon` | 30s aggregation window closes | `resource`, `avg_ms`, `peak_ms`, `samples` |
-| `econ.txn` | Money moves | `player`, `player_id`, `direction`, `amount`, `account`, `source`, `balance_after` |
-| `econ.set` | Balance overwritten | `player`, `player_id`, `account`, `value`, `delta` (if known), `source` |
+| `econ.txn` | Money moves | `player`, `player_id`, `direction`, `amount`, `account`, `source`, `via`, `balance_after` |
+| `econ.set` | Balance overwritten | `player`, `player_id`, `account`, `value`, `delta` (if known), `source`, `via` |
 | `vehicle.spawn` | Vehicle created for a player | `model`, `method` (garage/dealer/admin/script), `source`, `by` |
 | `staff.action` | Staff-privileged act observed | `staffer`, `action`, `target`, `detail` |
 | `net.rate` | 60s window closes | `event`, `top_sender`, `count` — event-spam visibility |
@@ -103,6 +103,14 @@ concrete cause (e.g. `"job:police:paycheck"`, `"qb-vehicleshop:purchase"`,
 detection treats outcomes without causes as having no innocent explanation.
 This rule is what makes scalpel-grade detection possible; adapters that
 cannot honor it for a given event class must say so in their README.
+
+*Amended Oct 8 2026 (agent 0.1.1):* on frameworks that announce money changes
+themselves (Qbox/QBCore `OnMoneyChange`), the invoking resource is always the
+framework. Adapters therefore set the event `src` to the resource named by a
+`<resource>:<action>` reason when that resource is running, and to the
+framework otherwise; `data.via` names the framework. A reason that says
+nothing (`unknown`, `Unknown`, blank) is sent as `"unknown"`, lowercase. The
+backend applies the same folding to events from older agents.
 
 ## Response
 

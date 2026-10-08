@@ -63,9 +63,27 @@ tokens, IP:port pairs) are blanked before sending, and Sentinel checks again.
 ## Money provenance
 
 On Qbox and QBCore every `AddMoney`, `RemoveMoney` and `SetMoney` call is
-recorded with the `reason` the calling script passed. Money with no reason is
-recorded as source `unknown`: that's what Sentinel's dupe detection looks for,
-so scripts that pass a reason make their money traceable.
+recorded with the `reason` the calling script passed.
+
+The framework announces every money change itself, so without a reason the
+only name the agent can see is the framework's (`qbx_core`). To get credit
+in the portal, a script passes a reason shaped `<resource>:<action>`:
+
+```lua
+player.Functions.AddMoney('cash', 500, 'bsd_banking:withdraw')
+```
+
+When the part before the colon is a resource running on the server, the
+event's source is that resource (`bsd_banking`); the full reason shows next
+to it. Anything else (no reason, a free-text reason, or a name that isn't a
+running resource) is credited to the framework.
+
+Money with no reason (Qbox fills in `unknown`; some scripts pass `Unknown`)
+is recorded as `unknown`. That's what Sentinel's dupe detection looks for,
+so scripts that pass a reason make their money traceable. Qbox's own
+paycheck passes no reason, so paychecks show as `unknown` until
+`sendPaycheck` in `qbx_core/config/server.lua` passes one (for example
+`'qbx_core:paycheck'`).
 
 ## Not yet
 

@@ -51,7 +51,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-const SEV = { 'server.hitch':'warn', 'player.drop':'crit', 'player.join':'ok', 'econ.txn':'info', 'perf.resmon':'info', 'agent.error':'crit', 'staff.action':'warn' };
+const SEV = { 'server.hitch':'warn', 'player.drop':'crit', 'player.join':'ok', 'econ.txn':'info', 'econ.set':'warn', 'perf.resmon':'info', 'agent.error':'crit', 'staff.action':'warn' };
 let currentType = '';
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -61,7 +61,8 @@ function describe(ev) {
   switch (ev.type) {
     case 'player.join':  return `<b>${esc(d.player || '?')}</b> connected`;
     case 'player.drop':  return `<b>${esc(d.player || '?')}</b> dropped — ${esc(d.reason || 'unknown')}${d.session_s ? ` · session ${Math.round(d.session_s/60)}m` : ''}`;
-    case 'econ.txn':     return `<b>${esc(d.player || '?')}</b> ${d.direction === 'in' ? 'deposited' : 'withdrew'} $${(d.amount || 0).toLocaleString()} · balance $${(d.balance_after || 0).toLocaleString()}`;
+    case 'econ.txn':
+    case 'econ.set':     return Sentinel.money(ev);
     case 'server.hitch': return `<b>Hitch warning</b> — ${d.ms} ms frame, ${d.players} players, ${d.active_resources} resources`;
     case 'perf.resmon':  return `resmon window — <b>${esc(d.resource || '?')}</b> avg ${d.avg_ms} ms, peak ${d.peak_ms} ms`;
     default:             return `<b>${esc(ev.type)}</b> ${esc(JSON.stringify(d))}`;
@@ -94,7 +95,7 @@ async function refresh() {
         <td class="ts">${ts(ev.t)}</td>
         <td class="type"><span class="chip">${esc(ev.type)}</span></td>
         <td class="desc">${describe(ev)}</td>
-        <td class="src">${esc(ev.src || 'server')}</td>
+        <td class="src">${Sentinel.src(ev)}</td>
       </tr>`).join('');
   } catch (err) {
     $('agent-pulse').classList.add('dead');

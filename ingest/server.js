@@ -6,6 +6,7 @@ const express = require('express');
 const path = require('path');
 const { z } = require('zod');
 const { analyze } = require('../core/econ-anomaly');
+const { normalizeSource } = require('../core/provenance');
 const { diagnose } = require('../core/hitch-diagnosis');
 const { loadConfig } = require('./config');
 const { bearerToken, portalAuth } = require('./auth');
@@ -424,7 +425,7 @@ app.get('/v1/economy', (req, res) => {
   for (const e of txns) {
     const d = e.data || {};
     const amt = d.amount || 0;
-    const src = d.source || 'unknown';
+    const src = normalizeSource(d.source);   // 'Unknown', '' and missing all mean unknown
     if (!sources.has(src)) sources.set(src, { source: src, in: 0, out: 0, count: 0 });
     const s = sources.get(src);
     s.count++;

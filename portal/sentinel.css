@@ -157,7 +157,7 @@ body{
 .stream{list-style:none}
 .stream li{display:flex;gap:13px;align-items:baseline;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.82rem}
 .stream li:last-child{border-bottom:none}
-.stream .ts{font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--txt-faint);white-space:nowrap;width:58px}
+.stream .ts{font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--txt-faint);white-space:nowrap;width:78px}
 .stream .ev{color:var(--txt-soft);line-height:1.5}
 .stream .ev b{color:var(--txt);font-weight:500}
 .sev{width:7px;height:7px;border-radius:50%;flex-shrink:0;position:relative;top:-1px}
@@ -291,3 +291,10 @@ tbody tr[data-name]:hover td{background:rgba(255,255,255,.03)}
   td.src{display:none}
   th.src-col{display:none}
 }
+/* ---- Money lines (shared via Sentinel.money in shell.js) ---- */
+.amt{font-family:"JetBrains Mono",monospace;font-weight:600}
+.amt.in{color:var(--ok)}
+.amt.out{color:var(--txt-soft)}
+.reason{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--txt-soft)}
+.reason.unk{color:var(--crit)}
+.via{font-size:.7rem;color:var(--txt-faint)}

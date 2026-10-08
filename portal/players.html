@@ -87,7 +87,8 @@ function describe(ev) {
   switch (ev.type) {
     case 'player.join':  return `connected`;
     case 'player.drop':  return `dropped — ${esc(d.reason || 'unknown')}${d.session_s ? ` · session ${Math.round(d.session_s/60)}m` : ''}`;
-    case 'econ.txn':     return `${d.direction === 'in' ? 'deposited' : 'withdrew'} $${(d.amount || 0).toLocaleString()} <span style="color:var(--txt-faint)">(src: ${esc(d.source || '—')})</span>`;
+    case 'econ.txn':
+    case 'econ.set':     return Sentinel.money(ev, { player: false });
     default:             return `<b>${esc(ev.type)}</b>`;
   }
 }
